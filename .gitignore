@@ -95,7 +95,10 @@ ENV/
 
 # Internal local context
 .last-cleanup
-internal_docs/AGENTS.md
+internal_docs/
+InternalDocs/
+internal-docs/
+Internal-Docs/
 backups/
 mcp-needs-auth-cache.json
 projects/
