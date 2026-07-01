@@ -125,6 +125,19 @@ export interface ResolvePendingRequestInput {
   responseJson: unknown
 }
 
+export interface UpdateProviderBindingInput {
+  sessionId: string
+  providerSessionId?: string | null
+  providerThreadId?: string | null
+  resumeCursorJson?: string | null
+}
+
+export interface UpdateProviderTurnInput {
+  sessionId: string
+  turnId: string
+  providerTurnId: string
+}
+
 export interface InterruptRunningTurnResult {
   turn: AgentTurn | null
   detail: AgentSessionDetail | null
@@ -441,6 +454,57 @@ export class AgentSessionRepository {
       .run(timestamp, timestamp, sessionId)
 
     return this.findSessionDetail(sessionId)
+  }
+
+  updateProviderBinding(input: UpdateProviderBindingInput): AgentSessionDetail | null {
+    const timestamp = nowIso()
+
+    getDb()
+      .prepare(
+        `
+          UPDATE agent_sessions
+          SET provider_session_id = COALESCE(?, provider_session_id),
+              provider_thread_id = COALESCE(?, provider_thread_id),
+              resume_cursor_json = COALESCE(?, resume_cursor_json),
+              updated_at = ?
+          WHERE id = ?
+        `
+      )
+      .run(
+        input.providerSessionId ?? null,
+        input.providerThreadId ?? null,
+        input.resumeCursorJson ?? null,
+        timestamp,
+        input.sessionId
+      )
+
+    return this.findSessionDetail(input.sessionId)
+  }
+
+  updateTurnProviderId(input: UpdateProviderTurnInput): AgentTurn | null {
+    getDb()
+      .prepare(
+        `
+          UPDATE agent_turns
+          SET provider_turn_id = ?
+          WHERE id = ?
+            AND session_id = ?
+        `
+      )
+      .run(input.providerTurnId, input.turnId, input.sessionId)
+
+    const row = getDb()
+      .prepare(
+        `
+          SELECT *
+          FROM agent_turns
+          WHERE id = ?
+            AND session_id = ?
+        `
+      )
+      .get(input.turnId, input.sessionId) as AgentTurnRow | undefined
+
+    return row ? mapTurn(row) : null
   }
 
   createFollowupTurnFromUserMessage(input: CreateFollowupTurnInput): AgentTurn {

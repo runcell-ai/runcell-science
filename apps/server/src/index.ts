@@ -2,6 +2,7 @@ import { config, ensureRuntimeDirs } from './config/env'
 import { createServer } from './http'
 import { closeDb } from './db/connection'
 import { runMigrations } from './db/migrate'
+import { runtimeRegistry } from './runtime'
 
 async function bootstrap(): Promise<void> {
   ensureRuntimeDirs()
@@ -10,6 +11,7 @@ async function bootstrap(): Promise<void> {
   const server = createServer()
 
   const closeHooks = async () => {
+    await runtimeRegistry.dispose()
     await server.close()
     closeDb()
   }

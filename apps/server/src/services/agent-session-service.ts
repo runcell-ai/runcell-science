@@ -12,12 +12,13 @@ import type {
   CreateAgentSessionResponse
 } from '@open-science/contracts'
 
-import { sessionEventBus } from '../runtime'
+import { sessionEventBus } from '../runtime/session-event-bus'
 import {
   AgentSessionRepository,
   type AppendAssistantMessageDeltaInput,
   type CreatePendingAgentSessionInput,
-  type CreatePendingRequestInput
+  type CreatePendingRequestInput,
+  type PersistAgentEventInput
 } from './agent-session-repository'
 
 export interface CreateAgentSessionDraftInput {
@@ -41,6 +42,25 @@ export interface ResolveAgentPendingRequestInput {
   sessionId: string
   requestId: string
   responseJson: unknown
+}
+
+export interface UpdateProviderBindingInput {
+  sessionId: string
+  providerSessionId?: string | null
+  providerThreadId?: string | null
+  resumeCursorJson?: string | null
+}
+
+export interface UpdateProviderTurnInput {
+  sessionId: string
+  turnId: string
+  providerTurnId: string
+}
+
+export interface RecordRuntimeActivityInput extends PersistAgentEventInput {
+  title: string
+  summary?: string
+  status?: string
 }
 
 const defaultPendingActivationTtlMs = 24 * 60 * 60 * 1000
@@ -140,6 +160,38 @@ export class AgentSessionService {
     this.publishSessionUpdated(projection.detail.session)
     this.publishMessageEvent('message.delta', projection.message, input.delta)
     return projection.message
+  }
+
+  updateProviderBinding(input: UpdateProviderBindingInput): AgentSessionDetail {
+    const detail = this.repository.updateProviderBinding(input)
+    if (!detail) {
+      throw new AgentSessionServiceError('not_found', 'Session was not found.', 404)
+    }
+    this.publishSessionUpdated(detail.session)
+    return detail
+  }
+
+  updateTurnProviderId(input: UpdateProviderTurnInput): AgentTurn {
+    const turn = this.repository.updateTurnProviderId(input)
+    if (!turn) {
+      throw new AgentSessionServiceError('not_found', 'Turn was not found.', 404)
+    }
+    return turn
+  }
+
+  recordRuntimeActivity(input: RecordRuntimeActivityInput): void {
+    this.repository.insertAgentEvent(input)
+    sessionEventBus.publish({
+      id: createEventId(),
+      type: 'activity',
+      sessionId: input.sessionId,
+      turnId: input.turnId,
+      createdAt: nowIso(),
+      eventType: input.eventType,
+      title: input.title,
+      ...(input.summary !== undefined ? { summary: input.summary } : {}),
+      ...(input.status !== undefined ? { status: input.status } : {})
+    })
   }
 
   completeTurn(sessionId: string, turnId: string): AgentSessionDetail {
@@ -246,6 +298,10 @@ export class AgentSessionService {
     const olderThanMs = input.olderThanMs ?? defaultPendingActivationTtlMs
     const cutoffIso = new Date(Date.now() - olderThanMs).toISOString()
     return this.repository.cleanupPendingActivationSessionsWithoutAssistantResponse({ cutoffIso })
+  }
+
+  discardPendingActivationSession(sessionId: string): boolean {
+    return this.repository.deletePendingActivationSession(sessionId)
   }
 
   private publishSessionUpdated(session: AgentSession): void {

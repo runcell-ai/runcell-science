@@ -14,7 +14,7 @@ import type {
   RuntimeSseEvent
 } from '@open-science/contracts'
 
-import { sessionEventBus } from '../../runtime'
+import { RuntimeProviderError, runtimeRegistry, sessionEventBus } from '../../runtime'
 import { AgentSessionServiceError, agentSessionService } from '../../services'
 
 const agentProviders: AgentProvider[] = ['codex', 'claude']
@@ -47,6 +47,15 @@ function sendBadRequest(reply: FastifyReply, message: string) {
 
 function sendServiceError(reply: FastifyReply, error: unknown) {
   if (error instanceof AgentSessionServiceError) {
+    return reply.code(error.httpStatus).send({
+      error: {
+        code: error.code,
+        message: error.message
+      }
+    } satisfies ApiErrorResponse)
+  }
+
+  if (error instanceof RuntimeProviderError) {
     return reply.code(error.httpStatus).send({
       error: {
         code: error.code,
@@ -182,7 +191,30 @@ export const sessionsRoute: FastifyPluginAsync = async (server) => {
     }
 
     const response = agentSessionService.createPendingSessionForInitialMessage(parsed)
-    reply.code(202).send(response satisfies CreateAgentSessionResponse)
+    const initialTurn = response.detail.turns[0]
+    const initialMessage = response.detail.messages[0]
+
+    if (!initialTurn || !initialMessage) {
+      agentSessionService.discardPendingActivationSession(response.sessionId)
+      return reply.code(500).send({
+        error: {
+          code: 'session_projection_failed',
+          message: 'Initial session projection is incomplete.'
+        }
+      } satisfies ApiErrorResponse)
+    }
+
+    try {
+      await runtimeRegistry.startInitialTurn({
+        session: response.detail.session,
+        turn: initialTurn,
+        message: initialMessage
+      })
+      return reply.code(202).send(response satisfies CreateAgentSessionResponse)
+    } catch (error) {
+      agentSessionService.discardPendingActivationSession(response.sessionId)
+      return sendServiceError(reply, error)
+    }
   })
 
   server.get('/api/sessions/:sessionId', async (request, reply) => {
@@ -220,10 +252,30 @@ export const sessionsRoute: FastifyPluginAsync = async (server) => {
         sessionId: params.sessionId,
         message: parsed.message
       })
+      const detail = agentSessionService.getSessionDetail(params.sessionId)
+      const userMessage = detail?.messages.find((message) => message.turnId === turn.id && message.role === 'user')
+      if (!detail || !userMessage) {
+        throw new AgentSessionServiceError('not_found', 'Session turn projection was not found.', 404)
+      }
+
+      await runtimeRegistry.startTurn({
+        session: detail.session,
+        turn,
+        message: userMessage
+      })
+
       return reply.code(202).send({
         turn
       } satisfies CreateAgentTurnResponse)
     } catch (error) {
+      if (error instanceof RuntimeProviderError) {
+        const runningTurn = agentSessionService
+          .getSessionDetail(params.sessionId)
+          ?.turns.find((entry) => entry.status === 'running')
+        if (runningTurn) {
+          agentSessionService.failTurn(params.sessionId, runningTurn.id, error.message)
+        }
+      }
       return sendServiceError(reply, error)
     }
   })
@@ -293,6 +345,17 @@ export const sessionsRoute: FastifyPluginAsync = async (server) => {
     }
 
     try {
+      const detail = agentSessionService.getSessionDetail(params.sessionId)
+      if (!detail) {
+        return reply.code(404).send({
+          error: {
+            code: 'not_found',
+            message: 'Session was not found.'
+          }
+        } satisfies ApiErrorResponse)
+      }
+
+      await runtimeRegistry.resolveRequest(detail.session, params.requestId, parsed)
       const resolved = agentSessionService.resolvePendingRequest({
         sessionId: params.sessionId,
         requestId: params.requestId,
@@ -313,6 +376,19 @@ export const sessionsRoute: FastifyPluginAsync = async (server) => {
     }
 
     try {
+      const detail = agentSessionService.getSessionDetail(params.sessionId)
+      if (!detail) {
+        return reply.code(404).send({
+          error: {
+            code: 'not_found',
+            message: 'Session was not found.'
+          }
+        } satisfies ApiErrorResponse)
+      }
+
+      await runtimeRegistry.interrupt({
+        session: detail.session
+      })
       const result = agentSessionService.interruptRunningTurn(params.sessionId)
       return reply.send(result satisfies InterruptAgentSessionResponse)
     } catch (error) {
