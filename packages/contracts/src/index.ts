@@ -106,6 +106,10 @@ export interface AgentSessionDetail {
   pendingRequests: AgentPendingRequest[]
 }
 
+export interface ListAgentSessionsResponse {
+  sessions: AgentSessionSummary[]
+}
+
 export interface CreateAgentSessionRequest {
   provider: AgentProvider
   cwd: string
@@ -132,6 +136,16 @@ export interface ResolveAgentRequestRequest {
   answer?: string
 }
 
+export interface ResolveAgentRequestResponse {
+  request: AgentPendingRequest
+}
+
+export interface InterruptAgentSessionResponse {
+  interrupted: boolean
+  turn: AgentTurn | null
+  session: AgentSession | null
+}
+
 export interface RuntimeSseEventBase {
   id: string
   sessionId: string
@@ -140,6 +154,10 @@ export interface RuntimeSseEventBase {
 }
 
 export type RuntimeSseEvent =
+  | (RuntimeSseEventBase & {
+      type: 'session.snapshot'
+      detail: AgentSessionDetail
+    })
   | (RuntimeSseEventBase & {
       type: 'session.updated'
       session: AgentSession

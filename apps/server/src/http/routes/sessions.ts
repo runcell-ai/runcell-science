@@ -3,11 +3,19 @@ import type {
   AgentProvider,
   AgentRuntimeMode,
   ApiErrorResponse,
+  CreateAgentTurnRequest,
+  CreateAgentTurnResponse,
   CreateAgentSessionRequest,
-  CreateAgentSessionResponse
+  CreateAgentSessionResponse,
+  InterruptAgentSessionResponse,
+  ListAgentSessionsResponse,
+  ResolveAgentRequestRequest,
+  ResolveAgentRequestResponse,
+  RuntimeSseEvent
 } from '@open-science/contracts'
 
-import { agentSessionService } from '../../services'
+import { sessionEventBus } from '../../runtime'
+import { AgentSessionServiceError, agentSessionService } from '../../services'
 
 const agentProviders: AgentProvider[] = ['codex', 'claude']
 const runtimeModes: AgentRuntimeMode[] = ['full_access', 'default']
@@ -35,6 +43,25 @@ function sendBadRequest(reply: FastifyReply, message: string) {
       message
     }
   } satisfies ApiErrorResponse)
+}
+
+function sendServiceError(reply: FastifyReply, error: unknown) {
+  if (error instanceof AgentSessionServiceError) {
+    return reply.code(error.httpStatus).send({
+      error: {
+        code: error.code,
+        message: error.message
+      }
+    } satisfies ApiErrorResponse)
+  }
+
+  throw error
+}
+
+function sendSseEvent(reply: FastifyReply, event: RuntimeSseEvent): void {
+  reply.raw.write(`id: ${event.id}\n`)
+  reply.raw.write(`event: ${event.type}\n`)
+  reply.raw.write(`data: ${JSON.stringify(event)}\n\n`)
 }
 
 function parseCreateSessionRequest(body: unknown): CreateAgentSessionRequest | ApiErrorResponse['error'] {
@@ -93,11 +120,59 @@ function isParseError(value: CreateAgentSessionRequest | ApiErrorResponse['error
   return 'code' in value
 }
 
+function parseCreateTurnRequest(body: unknown): CreateAgentTurnRequest | ApiErrorResponse['error'] {
+  if (!isRecord(body)) {
+    return {
+      code: 'bad_request',
+      message: 'Request body must be a JSON object.'
+    }
+  }
+
+  if (!isNonEmptyString(body.message)) {
+    return {
+      code: 'bad_request',
+      message: 'message is required.'
+    }
+  }
+
+  return {
+    message: body.message
+  }
+}
+
+function parseResolveRequest(body: unknown): ResolveAgentRequestRequest | ApiErrorResponse['error'] {
+  if (!isRecord(body)) {
+    return {
+      code: 'bad_request',
+      message: 'Request body must be a JSON object.'
+    }
+  }
+
+  if (body.decision !== 'allow' && body.decision !== 'deny' && body.decision !== 'answer') {
+    return {
+      code: 'bad_request',
+      message: 'decision must be "allow", "deny", or "answer".'
+    }
+  }
+
+  if (body.answer !== undefined && typeof body.answer !== 'string') {
+    return {
+      code: 'bad_request',
+      message: 'answer must be a string when provided.'
+    }
+  }
+
+  return {
+    decision: body.decision,
+    ...(body.answer !== undefined ? { answer: body.answer } : {})
+  }
+}
+
 export const sessionsRoute: FastifyPluginAsync = async (server) => {
   server.get('/api/sessions', async (_request, reply) => {
     reply.send({
       sessions: agentSessionService.listVisibleSessions()
-    })
+    } satisfies ListAgentSessionsResponse)
   })
 
   server.post('/api/sessions', async (request, reply) => {
@@ -127,5 +202,121 @@ export const sessionsRoute: FastifyPluginAsync = async (server) => {
     }
 
     return reply.send(detail)
+  })
+
+  server.post('/api/sessions/:sessionId/turns', async (request, reply) => {
+    const params = request.params as { sessionId?: string }
+    if (!isNonEmptyString(params.sessionId)) {
+      return sendBadRequest(reply, 'sessionId is required.')
+    }
+
+    const parsed = parseCreateTurnRequest(request.body)
+    if ('code' in parsed) {
+      return sendBadRequest(reply, parsed.message)
+    }
+
+    try {
+      const turn = agentSessionService.startFollowupTurn({
+        sessionId: params.sessionId,
+        message: parsed.message
+      })
+      return reply.code(202).send({
+        turn
+      } satisfies CreateAgentTurnResponse)
+    } catch (error) {
+      return sendServiceError(reply, error)
+    }
+  })
+
+  server.get('/api/sessions/:sessionId/events', async (request, reply) => {
+    const params = request.params as { sessionId?: string }
+    if (!isNonEmptyString(params.sessionId)) {
+      return sendBadRequest(reply, 'sessionId is required.')
+    }
+
+    const detail = agentSessionService.getSessionDetail(params.sessionId)
+    if (!detail) {
+      return reply.code(404).send({
+        error: {
+          code: 'not_found',
+          message: 'Session was not found.'
+        }
+      } satisfies ApiErrorResponse)
+    }
+
+    reply.hijack()
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no'
+    })
+
+    const unsubscribe = sessionEventBus.subscribe(params.sessionId, (event) => {
+      if (!reply.raw.writableEnded) {
+        sendSseEvent(reply, event)
+      }
+    })
+
+    const heartbeat = setInterval(() => {
+      if (!reply.raw.writableEnded) {
+        reply.raw.write(': heartbeat\n\n')
+      }
+    }, 15_000)
+
+    sendSseEvent(reply, {
+      id: `snapshot_${detail.session.id}`,
+      type: 'session.snapshot',
+      sessionId: detail.session.id,
+      createdAt: new Date().toISOString(),
+      detail
+    })
+
+    request.raw.on('close', () => {
+      clearInterval(heartbeat)
+      unsubscribe()
+    })
+  })
+
+  server.post('/api/sessions/:sessionId/requests/:requestId/resolve', async (request, reply) => {
+    const params = request.params as { sessionId?: string; requestId?: string }
+    if (!isNonEmptyString(params.sessionId)) {
+      return sendBadRequest(reply, 'sessionId is required.')
+    }
+    if (!isNonEmptyString(params.requestId)) {
+      return sendBadRequest(reply, 'requestId is required.')
+    }
+
+    const parsed = parseResolveRequest(request.body)
+    if ('code' in parsed) {
+      return sendBadRequest(reply, parsed.message)
+    }
+
+    try {
+      const resolved = agentSessionService.resolvePendingRequest({
+        sessionId: params.sessionId,
+        requestId: params.requestId,
+        responseJson: parsed
+      })
+      return reply.send({
+        request: resolved
+      } satisfies ResolveAgentRequestResponse)
+    } catch (error) {
+      return sendServiceError(reply, error)
+    }
+  })
+
+  server.post('/api/sessions/:sessionId/interrupt', async (request, reply) => {
+    const params = request.params as { sessionId?: string }
+    if (!isNonEmptyString(params.sessionId)) {
+      return sendBadRequest(reply, 'sessionId is required.')
+    }
+
+    try {
+      const result = agentSessionService.interruptRunningTurn(params.sessionId)
+      return reply.send(result satisfies InterruptAgentSessionResponse)
+    } catch (error) {
+      return sendServiceError(reply, error)
+    }
   })
 }

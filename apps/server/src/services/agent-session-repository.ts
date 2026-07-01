@@ -84,6 +84,57 @@ export interface PendingActivationCleanupInput {
   cutoffIso: string
 }
 
+export interface CreateFollowupTurnInput {
+  sessionId: string
+  message: string
+}
+
+export interface PersistAgentEventInput {
+  sessionId: string
+  turnId: string | null
+  provider: AgentProvider
+  eventType: string
+  streamKind?: string | null
+  rawSource?: string | null
+  rawJson?: unknown
+  canonicalJson?: unknown
+}
+
+export interface AppendAssistantMessageDeltaInput {
+  sessionId: string
+  turnId: string
+  provider: AgentProvider
+  delta: string
+  providerItemId?: string | null
+  rawSource?: string | null
+  rawJson?: unknown
+  canonicalJson?: unknown
+}
+
+export interface CreatePendingRequestInput {
+  sessionId: string
+  turnId: string
+  type: string
+  title?: string | null
+  payloadJson: unknown
+}
+
+export interface ResolvePendingRequestInput {
+  sessionId: string
+  requestId: string
+  responseJson: unknown
+}
+
+export interface InterruptRunningTurnResult {
+  turn: AgentTurn | null
+  detail: AgentSessionDetail | null
+}
+
+export interface AssistantDeltaProjection {
+  message: AgentMessage
+  detail: AgentSessionDetail
+}
+
 function nowIso(): string {
   return new Date().toISOString()
 }
@@ -174,6 +225,10 @@ function mapPendingRequest(row: AgentPendingRequestRow): AgentPendingRequest {
     createdAt: row.created_at,
     resolvedAt: row.resolved_at
   }
+}
+
+function stringifyJson(value: unknown): string | null {
+  return value === undefined ? null : JSON.stringify(value)
 }
 
 export class AgentSessionRepository {
@@ -281,6 +336,37 @@ export class AgentSessionRepository {
     return rows.map(mapSessionSummary)
   }
 
+  findSession(sessionId: string): AgentSession | null {
+    const row = getDb()
+      .prepare(
+        `
+          SELECT *
+          FROM agent_sessions
+          WHERE id = ?
+        `
+      )
+      .get(sessionId) as AgentSessionRow | undefined
+
+    return row ? mapSession(row) : null
+  }
+
+  findRunningTurn(sessionId: string): AgentTurn | null {
+    const row = getDb()
+      .prepare(
+        `
+          SELECT *
+          FROM agent_turns
+          WHERE session_id = ?
+            AND status = 'running'
+          ORDER BY requested_at DESC
+          LIMIT 1
+        `
+      )
+      .get(sessionId) as AgentTurnRow | undefined
+
+    return row ? mapTurn(row) : null
+  }
+
   findSessionDetail(sessionId: string): AgentSessionDetail | null {
     const db = getDb()
     const sessionRow = db
@@ -355,6 +441,444 @@ export class AgentSessionRepository {
       .run(timestamp, timestamp, sessionId)
 
     return this.findSessionDetail(sessionId)
+  }
+
+  createFollowupTurnFromUserMessage(input: CreateFollowupTurnInput): AgentTurn {
+    const db = getDb()
+    const timestamp = nowIso()
+    const turnId = createId('turn')
+    const messageId = createId('message')
+
+    const createTransaction = db.transaction(() => {
+      db.prepare(
+        `
+          INSERT INTO agent_turns (
+            id,
+            session_id,
+            provider_turn_id,
+            status,
+            requested_at,
+            completed_at,
+            error
+          )
+          VALUES (?, ?, NULL, 'running', ?, NULL, NULL)
+        `
+      ).run(turnId, input.sessionId, timestamp)
+
+      db.prepare(
+        `
+          INSERT INTO agent_messages (
+            id,
+            session_id,
+            turn_id,
+            role,
+            text,
+            status,
+            provider_item_id,
+            created_at,
+            updated_at
+          )
+          VALUES (?, ?, ?, 'user', ?, 'completed', NULL, ?, ?)
+        `
+      ).run(messageId, input.sessionId, turnId, input.message, timestamp, timestamp)
+
+      db.prepare(
+        `
+          UPDATE agent_sessions
+          SET status = 'running',
+              updated_at = ?
+          WHERE id = ?
+        `
+      ).run(timestamp, input.sessionId)
+    })
+
+    createTransaction()
+
+    const turn = this.findRunningTurn(input.sessionId)
+    if (!turn || turn.id !== turnId) {
+      throw new Error(`Failed to load newly created turn ${turnId}.`)
+    }
+
+    return turn
+  }
+
+  appendAssistantMessageDelta(input: AppendAssistantMessageDeltaInput): AssistantDeltaProjection {
+    const db = getDb()
+    const timestamp = nowIso()
+
+    const appendTransaction = db.transaction(() => {
+      this.insertAgentEvent(
+        {
+          sessionId: input.sessionId,
+          turnId: input.turnId,
+          provider: input.provider,
+          eventType: 'content.delta',
+          streamKind: 'assistant_text',
+          rawSource: input.rawSource ?? null,
+          rawJson: input.rawJson,
+          canonicalJson:
+            input.canonicalJson ??
+            ({
+              type: 'content.delta',
+              streamKind: 'assistant_text',
+              delta: input.delta,
+              providerItemId: input.providerItemId ?? null
+            } satisfies Record<string, unknown>)
+        },
+        timestamp
+      )
+
+      const existingMessage = this.findAssistantMessageForDelta(input)
+      if (existingMessage) {
+        db.prepare(
+          `
+            UPDATE agent_messages
+            SET text = text || ?,
+                status = 'streaming',
+                updated_at = ?
+            WHERE id = ?
+          `
+        ).run(input.delta, timestamp, existingMessage.id)
+      } else {
+        db.prepare(
+          `
+            INSERT INTO agent_messages (
+              id,
+              session_id,
+              turn_id,
+              role,
+              text,
+              status,
+              provider_item_id,
+              created_at,
+              updated_at
+            )
+            VALUES (?, ?, ?, 'assistant', ?, 'streaming', ?, ?, ?)
+          `
+        ).run(
+          createId('message'),
+          input.sessionId,
+          input.turnId,
+          input.delta,
+          input.providerItemId ?? null,
+          timestamp,
+          timestamp
+        )
+      }
+
+      if (input.delta.trim().length > 0) {
+        db.prepare(
+          `
+            UPDATE agent_sessions
+            SET activated_at = COALESCE(activated_at, ?),
+                status = CASE
+                  WHEN status = 'pending_activation' THEN 'running'
+                  ELSE status
+                END,
+                updated_at = ?
+            WHERE id = ?
+          `
+        ).run(timestamp, timestamp, input.sessionId)
+      }
+    })
+
+    appendTransaction()
+
+    const detail = this.findSessionDetail(input.sessionId)
+    const message = this.findAssistantMessageForDelta(input)
+    if (!detail || !message) {
+      throw new Error(`Failed to project assistant delta for session ${input.sessionId}.`)
+    }
+
+    return {
+      message,
+      detail
+    }
+  }
+
+  completeTurn(sessionId: string, turnId: string): AgentSessionDetail | null {
+    const timestamp = nowIso()
+
+    getDb()
+      .prepare(
+        `
+          UPDATE agent_turns
+          SET status = 'completed',
+              completed_at = COALESCE(completed_at, ?)
+          WHERE id = ?
+            AND session_id = ?
+        `
+      )
+      .run(timestamp, turnId, sessionId)
+
+    getDb()
+      .prepare(
+        `
+          UPDATE agent_messages
+          SET status = 'completed',
+              updated_at = ?
+          WHERE session_id = ?
+            AND turn_id = ?
+            AND role = 'assistant'
+            AND status = 'streaming'
+        `
+      )
+      .run(timestamp, sessionId, turnId)
+
+    getDb()
+      .prepare(
+        `
+          UPDATE agent_sessions
+          SET status = 'ready',
+              updated_at = ?
+          WHERE id = ?
+        `
+      )
+      .run(timestamp, sessionId)
+
+    return this.findSessionDetail(sessionId)
+  }
+
+  failTurn(sessionId: string, turnId: string, error: string): AgentSessionDetail | null {
+    const timestamp = nowIso()
+
+    getDb()
+      .prepare(
+        `
+          UPDATE agent_turns
+          SET status = 'failed',
+              completed_at = COALESCE(completed_at, ?),
+              error = ?
+          WHERE id = ?
+            AND session_id = ?
+        `
+      )
+      .run(timestamp, error, turnId, sessionId)
+
+    getDb()
+      .prepare(
+        `
+          UPDATE agent_sessions
+          SET status = 'error',
+              last_error = ?,
+              updated_at = ?
+          WHERE id = ?
+        `
+      )
+      .run(error, timestamp, sessionId)
+
+    return this.findSessionDetail(sessionId)
+  }
+
+  createPendingRequest(input: CreatePendingRequestInput): AgentPendingRequest {
+    const timestamp = nowIso()
+    const requestId = createId('request')
+
+    getDb()
+      .prepare(
+        `
+          INSERT INTO agent_pending_requests (
+            id,
+            session_id,
+            turn_id,
+            type,
+            status,
+            title,
+            payload_json,
+            response_json,
+            created_at,
+            resolved_at
+          )
+          VALUES (?, ?, ?, ?, 'open', ?, ?, NULL, ?, NULL)
+        `
+      )
+      .run(
+        requestId,
+        input.sessionId,
+        input.turnId,
+        input.type,
+        input.title ?? null,
+        JSON.stringify(input.payloadJson),
+        timestamp
+      )
+
+    const request = this.findPendingRequest(input.sessionId, requestId)
+    if (!request) {
+      throw new Error(`Failed to load newly created pending request ${requestId}.`)
+    }
+
+    return request
+  }
+
+  resolvePendingRequest(input: ResolvePendingRequestInput): AgentPendingRequest | null {
+    const timestamp = nowIso()
+
+    getDb()
+      .prepare(
+        `
+          UPDATE agent_pending_requests
+          SET status = 'resolved',
+              response_json = ?,
+              resolved_at = ?
+          WHERE id = ?
+            AND session_id = ?
+            AND status = 'open'
+        `
+      )
+      .run(JSON.stringify(input.responseJson), timestamp, input.requestId, input.sessionId)
+
+    return this.findPendingRequest(input.sessionId, input.requestId)
+  }
+
+  findPendingRequest(sessionId: string, requestId: string): AgentPendingRequest | null {
+    const row = getDb()
+      .prepare(
+        `
+          SELECT *
+          FROM agent_pending_requests
+          WHERE session_id = ?
+            AND id = ?
+        `
+      )
+      .get(sessionId, requestId) as AgentPendingRequestRow | undefined
+
+    return row ? mapPendingRequest(row) : null
+  }
+
+  interruptRunningTurn(sessionId: string): InterruptRunningTurnResult {
+    const db = getDb()
+    const timestamp = nowIso()
+    let interruptedTurnId: string | null = null
+
+    const interruptTransaction = db.transaction(() => {
+      const runningTurn = db
+        .prepare(
+          `
+            SELECT *
+            FROM agent_turns
+            WHERE session_id = ?
+              AND status = 'running'
+            ORDER BY requested_at DESC
+            LIMIT 1
+          `
+        )
+        .get(sessionId) as AgentTurnRow | undefined
+
+      if (!runningTurn) {
+        return
+      }
+
+      interruptedTurnId = runningTurn.id
+
+      db.prepare(
+        `
+          UPDATE agent_turns
+          SET status = 'interrupted',
+              completed_at = COALESCE(completed_at, ?)
+          WHERE id = ?
+        `
+      ).run(timestamp, runningTurn.id)
+
+      db.prepare(
+        `
+          UPDATE agent_sessions
+          SET status = CASE
+                WHEN activated_at IS NULL THEN status
+                ELSE 'ready'
+              END,
+              updated_at = ?
+          WHERE id = ?
+        `
+      ).run(timestamp, sessionId)
+    })
+
+    interruptTransaction()
+
+    const detail = this.findSessionDetail(sessionId)
+    const turn = interruptedTurnId
+      ? detail?.turns.find((entry) => entry.id === interruptedTurnId) ?? null
+      : null
+
+    return {
+      turn,
+      detail
+    }
+  }
+
+  insertAgentEvent(input: PersistAgentEventInput, createdAt = nowIso()): string {
+    const eventId = createId('event')
+
+    getDb()
+      .prepare(
+        `
+          INSERT INTO agent_events (
+            id,
+            session_id,
+            turn_id,
+            provider,
+            event_type,
+            stream_kind,
+            raw_source,
+            raw_json,
+            canonical_json,
+            created_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `
+      )
+      .run(
+        eventId,
+        input.sessionId,
+        input.turnId,
+        input.provider,
+        input.eventType,
+        input.streamKind ?? null,
+        input.rawSource ?? null,
+        stringifyJson(input.rawJson),
+        stringifyJson(input.canonicalJson),
+        createdAt
+      )
+
+    return eventId
+  }
+
+  private findAssistantMessageForDelta(input: {
+    sessionId: string
+    turnId: string
+    providerItemId?: string | null
+  }): AgentMessage | null {
+    const db = getDb()
+    const row = input.providerItemId
+      ? (db
+          .prepare(
+            `
+              SELECT *
+              FROM agent_messages
+              WHERE session_id = ?
+                AND turn_id = ?
+                AND role = 'assistant'
+                AND provider_item_id = ?
+              ORDER BY created_at ASC
+              LIMIT 1
+            `
+          )
+          .get(input.sessionId, input.turnId, input.providerItemId) as AgentMessageRow | undefined)
+      : (db
+          .prepare(
+            `
+              SELECT *
+              FROM agent_messages
+              WHERE session_id = ?
+                AND turn_id = ?
+                AND role = 'assistant'
+                AND provider_item_id IS NULL
+              ORDER BY created_at ASC
+              LIMIT 1
+            `
+          )
+          .get(input.sessionId, input.turnId) as AgentMessageRow | undefined)
+
+    return row ? mapMessage(row) : null
   }
 
   deletePendingActivationSession(sessionId: string): boolean {
