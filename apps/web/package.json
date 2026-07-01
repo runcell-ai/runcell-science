@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@open-science/contracts": "workspace:*",
     "@radix-ui/react-context-menu": "^2.1.5",
     "@radix-ui/react-dialog": "^1.1.12",
     "@radix-ui/react-scroll-area": "^1.2.4",

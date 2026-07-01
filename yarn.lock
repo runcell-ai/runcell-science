@@ -549,6 +549,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@open-science/web@workspace:apps/web"
   dependencies:
+    "@open-science/contracts": "workspace:*"
     "@radix-ui/react-context-menu": "npm:^2.1.5"
     "@radix-ui/react-dialog": "npm:^1.1.12"
     "@radix-ui/react-scroll-area": "npm:^1.2.4"
