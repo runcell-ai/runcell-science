@@ -34,6 +34,10 @@ export type AgentMessageStatus = 'pending' | 'streaming' | 'completed' | 'failed
 
 export type AgentPendingRequestStatus = 'open' | 'resolved'
 
+export type AgentArtifactKind = 'image' | 'pdf' | 'markdown' | 'html' | 'url'
+
+export type AgentArtifactSource = 'file' | 'url'
+
 export type AgentDiffChangeKind = 'add' | 'delete' | 'update'
 export type AgentDiffSource = 'provider' | 'checkpoint'
 
@@ -136,12 +140,41 @@ export interface AgentPendingRequest {
   resolvedAt: string | null
 }
 
+export type AgentArtifact =
+  | {
+      id: string
+      sessionId: string
+      turnId: string | null
+      messageId: string | null
+      kind: Exclude<AgentArtifactKind, 'url'>
+      source: 'file'
+      path: string
+      url: null
+      title: string | null
+      createdAt: string
+      updatedAt: string
+    }
+  | {
+      id: string
+      sessionId: string
+      turnId: string | null
+      messageId: string | null
+      kind: 'url'
+      source: 'url'
+      path: null
+      url: string
+      title: string | null
+      createdAt: string
+      updatedAt: string
+    }
+
 export interface AgentSessionDetail {
   session: AgentSession
   turns: AgentTurn[]
   messages: AgentMessage[]
   events: AgentEvent[]
   diffs?: AgentTurnDiff[]
+  artifacts: AgentArtifact[]
   pendingRequests: AgentPendingRequest[]
 }
 
@@ -178,6 +211,31 @@ export interface CreateAgentTurnRequest {
 
 export interface CreateAgentTurnResponse {
   turn: AgentTurn
+}
+
+export type CreateAgentArtifactRequest =
+  | {
+      kind?: Exclude<AgentArtifactKind, 'url'>
+      path: string
+      title?: string | null
+      turnId?: string | null
+      messageId?: string | null
+    }
+  | {
+      kind?: 'url'
+      url: string
+      title?: string | null
+      turnId?: string | null
+      messageId?: string | null
+    }
+
+export interface CreateAgentArtifactResponse {
+  artifact: AgentArtifact
+}
+
+export interface AgentArtifactMarkdownContentResponse {
+  artifact: AgentArtifact
+  content: string
 }
 
 export interface ResolveAgentRequestRequest {
@@ -234,6 +292,10 @@ export type RuntimeSseEvent =
   | (RuntimeSseEventBase & {
       type: 'diff.updated'
       diff: AgentTurnDiff
+    })
+  | (RuntimeSseEventBase & {
+      type: 'artifact.created' | 'artifact.updated'
+      artifact: AgentArtifact
     })
   | (RuntimeSseEventBase & {
       type: 'runtime.error'

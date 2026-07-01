@@ -1,6 +1,9 @@
 import crypto from 'node:crypto'
 
 import type {
+  AgentArtifact,
+  AgentArtifactKind,
+  AgentArtifactSource,
   AgentDiffChangeKind,
   AgentDiffFileChange,
   AgentDiffSource,
@@ -74,6 +77,20 @@ interface AgentPendingRequestRow {
   response_json: string | null
   created_at: string
   resolved_at: string | null
+}
+
+interface AgentArtifactRow {
+  id: string
+  session_id: string
+  turn_id: string | null
+  message_id: string | null
+  kind: AgentArtifactKind
+  source: AgentArtifactSource
+  path: string | null
+  url: string | null
+  title: string | null
+  created_at: string
+  updated_at: string
 }
 
 interface AgentEventRow {
@@ -162,6 +179,26 @@ export interface ResolvePendingRequestInput {
   responseJson: unknown
 }
 
+export type CreateAgentArtifactInput =
+  | {
+      sessionId: string
+      turnId?: string | null
+      messageId?: string | null
+      kind: Exclude<AgentArtifactKind, 'url'>
+      source: 'file'
+      path: string
+      title?: string | null
+    }
+  | {
+      sessionId: string
+      turnId?: string | null
+      messageId?: string | null
+      kind: 'url'
+      source: 'url'
+      url: string
+      title?: string | null
+    }
+
 export interface UpdateProviderBindingInput {
   sessionId: string
   providerSessionId?: string | null
@@ -215,6 +252,11 @@ export interface TurnCheckpointProjection {
 export interface AssistantDeltaProjection {
   message: AgentMessage
   detail: AgentSessionDetail
+}
+
+export interface AgentArtifactUpsertProjection {
+  artifact: AgentArtifact
+  created: boolean
 }
 
 function nowIso(): string {
@@ -306,6 +348,36 @@ function mapPendingRequest(row: AgentPendingRequestRow): AgentPendingRequest {
     responseJson: row.response_json,
     createdAt: row.created_at,
     resolvedAt: row.resolved_at
+  }
+}
+
+function mapArtifact(row: AgentArtifactRow): AgentArtifact {
+  const base = {
+    id: row.id,
+    sessionId: row.session_id,
+    turnId: row.turn_id,
+    messageId: row.message_id,
+    title: row.title,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  }
+
+  if (row.source === 'url') {
+    return {
+      ...base,
+      kind: 'url',
+      source: 'url',
+      path: null,
+      url: row.url ?? ''
+    }
+  }
+
+  return {
+    ...base,
+    kind: row.kind as Exclude<AgentArtifactKind, 'url'>,
+    source: 'file',
+    path: row.path ?? '',
+    url: null
   }
 }
 
@@ -817,6 +889,17 @@ export class AgentSessionRepository {
       )
       .all(sessionId) as AgentPendingRequestRow[]
 
+    const artifactRows = db
+      .prepare(
+        `
+          SELECT *
+          FROM agent_artifacts
+          WHERE session_id = ?
+          ORDER BY created_at ASC
+        `
+      )
+      .all(sessionId) as AgentArtifactRow[]
+
     const eventRows = db
       .prepare(
         `
@@ -871,6 +954,7 @@ export class AgentSessionRepository {
       messages: messageRows.map(mapMessage),
       events: eventRows.map(mapEvent).filter((event): event is AgentEvent => Boolean(event)),
       diffs: mapTurnDiffs(diffRows),
+      artifacts: artifactRows.map(mapArtifact),
       pendingRequests: pendingRequestRows.map(mapPendingRequest)
     }
   }
@@ -917,6 +1001,133 @@ export class AgentSessionRepository {
       )
 
     return this.findSessionDetail(input.sessionId)
+  }
+
+  createArtifact(input: CreateAgentArtifactInput): AgentArtifactUpsertProjection {
+    const timestamp = nowIso()
+    const existing =
+      input.source === 'file'
+        ? this.findArtifactByFilePath(input.sessionId, input.path)
+        : this.findArtifactByUrl(input.sessionId, input.url)
+
+    if (existing) {
+      getDb()
+        .prepare(
+          `
+            UPDATE agent_artifacts
+            SET
+              turn_id = COALESCE(?, turn_id),
+              message_id = COALESCE(?, message_id),
+              title = COALESCE(?, title),
+              updated_at = ?
+            WHERE id = ?
+          `
+        )
+        .run(input.turnId ?? null, input.messageId ?? null, input.title ?? null, timestamp, existing.id)
+
+      const artifact = this.findArtifact(existing.id)
+      if (!artifact) {
+        throw new Error(`Failed to load updated artifact ${existing.id}.`)
+      }
+
+      return {
+        artifact,
+        created: false
+      }
+    }
+
+    const artifactId = createId('artifact')
+
+    getDb()
+      .prepare(
+        `
+          INSERT INTO agent_artifacts (
+            id,
+            session_id,
+            turn_id,
+            message_id,
+            kind,
+            source,
+            path,
+            url,
+            title,
+            created_at,
+            updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `
+      )
+      .run(
+        artifactId,
+        input.sessionId,
+        input.turnId ?? null,
+        input.messageId ?? null,
+        input.kind,
+        input.source,
+        input.source === 'file' ? input.path : null,
+        input.source === 'url' ? input.url : null,
+        input.title ?? null,
+        timestamp,
+        timestamp
+      )
+
+    const artifact = this.findArtifact(artifactId)
+    if (!artifact) {
+      throw new Error(`Failed to load newly created artifact ${artifactId}.`)
+    }
+
+    return {
+      artifact,
+      created: true
+    }
+  }
+
+  findArtifact(artifactId: string): AgentArtifact | null {
+    const row = getDb()
+      .prepare(
+        `
+          SELECT *
+          FROM agent_artifacts
+          WHERE id = ?
+        `
+      )
+      .get(artifactId) as AgentArtifactRow | undefined
+
+    return row ? mapArtifact(row) : null
+  }
+
+  private findArtifactByFilePath(sessionId: string, filePath: string): AgentArtifact | null {
+    const row = getDb()
+      .prepare(
+        `
+          SELECT *
+          FROM agent_artifacts
+          WHERE session_id = ?
+            AND source = 'file'
+            AND path = ?
+          LIMIT 1
+        `
+      )
+      .get(sessionId, filePath) as AgentArtifactRow | undefined
+
+    return row ? mapArtifact(row) : null
+  }
+
+  private findArtifactByUrl(sessionId: string, url: string): AgentArtifact | null {
+    const row = getDb()
+      .prepare(
+        `
+          SELECT *
+          FROM agent_artifacts
+          WHERE session_id = ?
+            AND source = 'url'
+            AND url = ?
+          LIMIT 1
+        `
+      )
+      .get(sessionId, url) as AgentArtifactRow | undefined
+
+    return row ? mapArtifact(row) : null
   }
 
   updateTurnProviderId(input: UpdateProviderTurnInput): AgentTurn | null {

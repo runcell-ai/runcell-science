@@ -1,4 +1,4 @@
-import { FileDiff, Loader2 } from 'lucide-react'
+import { ExternalLink, FileDiff, FileText, Globe2, Image as ImageIcon, Loader2 } from 'lucide-react'
 
 import { Button } from '../ui/button'
 import { ScrollArea } from '../ui/scroll-area'
@@ -21,13 +21,15 @@ type AgentTimelineProps = {
     request: Extract<AgentTimelineItem, { type: 'request' }>['request'],
     decision: AgentRequestDecision
   ) => void
+  onOpenArtifact: (artifact: Extract<AgentTimelineItem, { type: 'artifact' }>['artifact']) => void
 }
 
 function AgentTimeline({
   items,
   running,
   resolvingRequestId,
-  onResolveRequest
+  onResolveRequest,
+  onOpenArtifact
 }: AgentTimelineProps) {
   return (
     <ScrollArea className="chat-scroll">
@@ -53,6 +55,10 @@ function AgentTimeline({
 
             if (item.type === 'diff') {
               return <AgentDiffRow key={item.id} item={item} />
+            }
+
+            if (item.type === 'artifact') {
+              return <AgentArtifactRow key={item.id} item={item} onOpenArtifact={onOpenArtifact} />
             }
 
             return <AgentToolCallRow key={item.id} item={item} />
@@ -149,6 +155,53 @@ function AgentDiffRow({
         <FileDiff className="activity-icon diff-activity-icon" />
       </div>
       <AgentDiffView diff={item.diff} />
+    </article>
+  )
+}
+
+function artifactTitle(item: Extract<AgentTimelineItem, { type: 'artifact' }>): string {
+  return item.artifact.title ?? item.artifact.path ?? item.artifact.url ?? 'Artifact'
+}
+
+function artifactLabel(item: Extract<AgentTimelineItem, { type: 'artifact' }>): string {
+  if (item.artifact.source === 'url') {
+    return item.artifact.url
+  }
+  return item.artifact.path
+}
+
+function ArtifactIcon({ item }: { item: Extract<AgentTimelineItem, { type: 'artifact' }> }) {
+  if (item.artifact.kind === 'url') {
+    return <Globe2 className="activity-icon artifact-activity-icon" />
+  }
+  if (item.artifact.kind === 'image') {
+    return <ImageIcon className="activity-icon artifact-activity-icon" />
+  }
+  return <FileText className="activity-icon artifact-activity-icon" />
+}
+
+function AgentArtifactRow({
+  item,
+  onOpenArtifact
+}: {
+  item: Extract<AgentTimelineItem, { type: 'artifact' }>
+  onOpenArtifact: AgentTimelineProps['onOpenArtifact']
+}) {
+  return (
+    <article className={`timeline-row artifact-row${item.active ? ' is-active' : ''}`}>
+      <div className="activity-marker">
+        <ArtifactIcon item={item} />
+      </div>
+      <div className="artifact-card">
+        <div className="artifact-card-copy">
+          <span className="artifact-card-title">{artifactTitle(item)}</span>
+          <span className="artifact-card-path">{artifactLabel(item)}</span>
+        </div>
+        <Button type="button" variant={item.active ? 'secondary' : 'outline'} size="sm" onClick={() => onOpenArtifact(item.artifact)}>
+          <ExternalLink />
+          Preview
+        </Button>
+      </div>
     </article>
   )
 }

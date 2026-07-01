@@ -369,6 +369,7 @@ function Gallery() {
                       running
                       resolvingRequestId={null}
                       onResolveRequest={() => undefined}
+                      onOpenArtifact={() => undefined}
                     />
                   </div>
                 </article>

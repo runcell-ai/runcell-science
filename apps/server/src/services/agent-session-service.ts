@@ -1,6 +1,8 @@
 import crypto from 'node:crypto'
 
 import type {
+  AgentArtifact,
+  AgentArtifactKind,
   AgentDiffFileChange,
   AgentDiffSource,
   AgentMessage,
@@ -19,6 +21,7 @@ import { sessionEventBus } from '../runtime/session-event-bus'
 import {
   AgentSessionRepository,
   type AppendAssistantMessageDeltaInput,
+  type CreateAgentArtifactInput,
   type CreatePendingAgentSessionInput,
   type CreatePendingRequestInput,
   type PersistAgentEventInput
@@ -86,6 +89,42 @@ export interface CaptureTurnCheckpointBaselineInput {
 }
 
 const defaultPendingActivationTtlMs = 24 * 60 * 60 * 1000
+const imageArtifactExtensions = new Set(['.apng', '.avif', '.bmp', '.gif', '.jpeg', '.jpg', '.png', '.svg', '.webp'])
+const markdownArtifactExtensions = new Set(['.markdown', '.md', '.mdown', '.mkd'])
+
+function extensionOf(filePath: string): string {
+  const normalized = filePath.split(/[?#]/, 1)[0] ?? filePath
+  const lastSlash = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'))
+  const basename = normalized.slice(lastSlash + 1)
+  const dot = basename.lastIndexOf('.')
+  return dot === -1 ? '' : basename.slice(dot).toLowerCase()
+}
+
+function isUnsafeRelativeArtifactPath(filePath: string): boolean {
+  return (
+    filePath.includes('\0') ||
+    filePath.startsWith('/') ||
+    /^[A-Za-z]:[\\/]/.test(filePath) ||
+    filePath.split(/[\\/]+/).includes('..')
+  )
+}
+
+export function inferArtifactKindFromPath(filePath: string): Exclude<AgentArtifactKind, 'url'> | null {
+  const extension = extensionOf(filePath)
+  if (imageArtifactExtensions.has(extension)) {
+    return 'image'
+  }
+  if (extension === '.pdf') {
+    return 'pdf'
+  }
+  if (markdownArtifactExtensions.has(extension)) {
+    return 'markdown'
+  }
+  if (extension === '.html' || extension === '.htm') {
+    return 'html'
+  }
+  return null
+}
 
 export class AgentSessionServiceError extends Error {
   constructor(
@@ -115,6 +154,32 @@ export class AgentSessionService {
 
   getSessionDetail(sessionId: string): AgentSessionDetail | null {
     return this.repository.findSessionDetail(sessionId)
+  }
+
+  getArtifact(artifactId: string): AgentArtifact | null {
+    return this.repository.findArtifact(artifactId)
+  }
+
+  createArtifact(input: CreateAgentArtifactInput): AgentArtifact {
+    const session = this.repository.findSession(input.sessionId)
+    if (!session) {
+      throw new AgentSessionServiceError('not_found', 'Session was not found.', 404)
+    }
+
+    if (input.source === 'file' && isUnsafeRelativeArtifactPath(input.path)) {
+      throw new AgentSessionServiceError('bad_request', 'Artifact file paths must be relative to the session cwd.', 400)
+    }
+
+    const projection = this.repository.createArtifact(input)
+    sessionEventBus.publish({
+      id: createEventId(),
+      type: projection.created ? 'artifact.created' : 'artifact.updated',
+      sessionId: projection.artifact.sessionId,
+      turnId: projection.artifact.turnId,
+      createdAt: projection.artifact.updatedAt,
+      artifact: projection.artifact
+    })
+    return projection.artifact
   }
 
   createPendingSessionForInitialMessage(input: CreateAgentSessionDraftInput): CreateAgentSessionResponse {
@@ -290,6 +355,26 @@ export class AgentSessionService {
       createdAt,
       diff
     })
+
+    for (const file of input.files ?? []) {
+      if (file.kind === 'delete') {
+        continue
+      }
+
+      const kind = inferArtifactKindFromPath(file.path)
+      if (!kind) {
+        continue
+      }
+
+      this.createArtifact({
+        sessionId: input.sessionId,
+        turnId: input.turnId,
+        kind,
+        source: 'file',
+        path: file.path,
+        title: file.path.split(/[\\/]/).pop() ?? file.path
+      })
+    }
 
     return diff
   }

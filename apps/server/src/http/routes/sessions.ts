@@ -1,10 +1,18 @@
+import fs from 'node:fs'
+import path from 'node:path'
+
 import { type FastifyPluginAsync, type FastifyReply } from 'fastify'
 import type {
+  AgentArtifact,
+  AgentArtifactKind,
+  AgentArtifactMarkdownContentResponse,
   AgentProvider,
   AgentRuntimeMode,
   ApiErrorResponse,
   AgentSessionWorktreeDiffResponse,
   AgentSessionWorktreeDiffStatusResponse,
+  CreateAgentArtifactRequest,
+  CreateAgentArtifactResponse,
   CreateAgentTurnRequest,
   CreateAgentTurnResponse,
   CreateAgentSessionRequest,
@@ -18,10 +26,31 @@ import type {
 
 import { RuntimeProviderError, runtimeRegistry, sessionEventBus } from '../../runtime'
 import { AgentSessionServiceError, agentSessionService } from '../../services'
+import { inferArtifactKindFromPath } from '../../services/agent-session-service'
 import { currentWorktreeDiff, isGitRepository } from '../../services/git-worktree-diff-service'
 
 const agentProviders: AgentProvider[] = ['codex', 'claude']
 const runtimeModes: AgentRuntimeMode[] = ['full_access', 'default']
+const localArtifactKinds: Exclude<AgentArtifactKind, 'url'>[] = ['image', 'pdf', 'markdown', 'html']
+
+const artifactContentTypes: Record<string, string> = {
+  '.apng': 'image/apng',
+  '.avif': 'image/avif',
+  '.bmp': 'image/bmp',
+  '.gif': 'image/gif',
+  '.htm': 'text/html; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
+  '.markdown': 'text/markdown; charset=utf-8',
+  '.md': 'text/markdown; charset=utf-8',
+  '.mdown': 'text/markdown; charset=utf-8',
+  '.mkd': 'text/markdown; charset=utf-8',
+  '.pdf': 'application/pdf',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.webp': 'image/webp'
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -39,12 +68,31 @@ function isRuntimeMode(value: unknown): value is AgentRuntimeMode {
   return typeof value === 'string' && runtimeModes.includes(value as AgentRuntimeMode)
 }
 
+function isLocalArtifactKind(value: unknown): value is Exclude<AgentArtifactKind, 'url'> {
+  return typeof value === 'string' && localArtifactKinds.includes(value as Exclude<AgentArtifactKind, 'url'>)
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 function sendBadRequest(reply: FastifyReply, message: string) {
   return reply.code(400).send({
     error: {
       code: 'bad_request',
       message
     }
+  } satisfies ApiErrorResponse)
+}
+
+function sendApiError(reply: FastifyReply, error: ApiErrorResponse['error']) {
+  return reply.code(error.code === 'not_found' ? 404 : 400).send({
+    error
   } satisfies ApiErrorResponse)
 }
 
@@ -68,6 +116,106 @@ function sendServiceError(reply: FastifyReply, error: unknown) {
   }
 
   throw error
+}
+
+function isInsideDirectory(parent: string, child: string): boolean {
+  const relative = path.relative(parent, child)
+  return relative === '' || (relative.length > 0 && !relative.startsWith('..') && !path.isAbsolute(relative))
+}
+
+function normalizeArtifactPath(cwd: string, candidate: string): string | ApiErrorResponse['error'] {
+  if (candidate.includes('\0')) {
+    return {
+      code: 'bad_request',
+      message: 'path must not contain null bytes.'
+    }
+  }
+
+  let cwdReal: string
+  let fileReal: string
+  try {
+    cwdReal = fs.realpathSync(cwd)
+    fileReal = fs.realpathSync(path.resolve(cwdReal, candidate))
+  } catch {
+    return {
+      code: 'bad_request',
+      message: 'path must reference an existing file inside the session cwd.'
+    }
+  }
+
+  if (!isInsideDirectory(cwdReal, fileReal)) {
+    return {
+      code: 'bad_request',
+      message: 'path must stay inside the session cwd.'
+    }
+  }
+
+  const stat = fs.statSync(fileReal)
+  if (!stat.isFile()) {
+    return {
+      code: 'bad_request',
+      message: 'path must reference a file.'
+    }
+  }
+
+  return path.relative(cwdReal, fileReal).split(path.sep).join('/')
+}
+
+function contentTypeForPath(filePath: string): string {
+  return artifactContentTypes[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream'
+}
+
+function safeFilename(filePath: string): string {
+  return path.basename(filePath).replace(/[^\w.\- ]+/g, '_') || 'artifact'
+}
+
+function resolveArtifactAssetPath(
+  artifact: AgentArtifact,
+  cwd: string,
+  resourcePath: string
+): string | ApiErrorResponse['error'] {
+  if (artifact.source !== 'file' || !artifact.path) {
+    return {
+      code: 'bad_request',
+      message: 'Artifact is not backed by a local file.'
+    }
+  }
+
+  if (resourcePath.includes('\0') || path.isAbsolute(resourcePath)) {
+    return {
+      code: 'bad_request',
+      message: 'resource path must be relative.'
+    }
+  }
+
+  try {
+    const cwdReal = fs.realpathSync(cwd)
+    const artifactReal = fs.realpathSync(path.resolve(cwdReal, artifact.path))
+    const baseDirReal = fs.realpathSync(path.dirname(artifactReal))
+    const targetCandidate = resourcePath ? path.resolve(baseDirReal, resourcePath) : artifactReal
+    const targetReal = fs.realpathSync(targetCandidate)
+
+    if (!isInsideDirectory(cwdReal, targetReal) || !isInsideDirectory(baseDirReal, targetReal)) {
+      return {
+        code: 'bad_request',
+        message: 'resource path must stay inside the artifact directory.'
+      }
+    }
+
+    if (!fs.statSync(targetReal).isFile()) {
+      return {
+        code: 'bad_request',
+        message: 'resource path must reference a file.'
+      }
+    }
+
+    return targetReal
+  } catch {
+    return {
+      code: 'not_found',
+      message: 'Artifact file was not found.'
+    }
+  }
 }
 
 function sendSseEvent(reply: FastifyReply, event: RuntimeSseEvent): void {
@@ -180,6 +328,65 @@ function parseResolveRequest(body: unknown): ResolveAgentRequestRequest | ApiErr
   }
 }
 
+function parseCreateArtifactRequest(body: unknown): CreateAgentArtifactRequest | ApiErrorResponse['error'] {
+  if (!isRecord(body)) {
+    return {
+      code: 'bad_request',
+      message: 'Request body must be a JSON object.'
+    }
+  }
+
+  if (isNonEmptyString(body.url)) {
+    if (body.path !== undefined) {
+      return {
+        code: 'bad_request',
+        message: 'Provide either url or path, not both.'
+      }
+    }
+    if (body.kind !== undefined && body.kind !== null && body.kind !== 'url') {
+      return {
+        code: 'bad_request',
+        message: 'URL artifacts must use kind "url".'
+      }
+    }
+    if (!isHttpUrl(body.url.trim())) {
+      return {
+        code: 'bad_request',
+        message: 'url must be an http or https URL.'
+      }
+    }
+    return {
+      kind: 'url',
+      url: body.url.trim(),
+      title: typeof body.title === 'string' ? body.title : null,
+      turnId: typeof body.turnId === 'string' ? body.turnId : null,
+      messageId: typeof body.messageId === 'string' ? body.messageId : null
+    }
+  }
+
+  if (!isNonEmptyString(body.path)) {
+    return {
+      code: 'bad_request',
+      message: 'path or url is required.'
+    }
+  }
+
+  if (body.kind !== undefined && body.kind !== null && !isLocalArtifactKind(body.kind)) {
+    return {
+      code: 'bad_request',
+      message: 'kind must be image, pdf, markdown, html, or url.'
+    }
+  }
+
+  return {
+    kind: isLocalArtifactKind(body.kind) ? body.kind : undefined,
+    path: body.path.trim(),
+    title: typeof body.title === 'string' ? body.title : null,
+    turnId: typeof body.turnId === 'string' ? body.turnId : null,
+    messageId: typeof body.messageId === 'string' ? body.messageId : null
+  }
+}
+
 export const sessionsRoute: FastifyPluginAsync = async (server) => {
   server.get('/api/sessions', async (_request, reply) => {
     reply.send({
@@ -242,6 +449,152 @@ export const sessionsRoute: FastifyPluginAsync = async (server) => {
 
     return reply.send(detail)
   })
+
+  server.post('/api/sessions/:sessionId/artifacts', async (request, reply) => {
+    const params = request.params as { sessionId?: string }
+    if (!isNonEmptyString(params.sessionId)) {
+      return sendBadRequest(reply, 'sessionId is required.')
+    }
+
+    const detail = agentSessionService.getSessionDetail(params.sessionId)
+    if (!detail) {
+      return reply.code(404).send({
+        error: {
+          code: 'not_found',
+          message: 'Session was not found.'
+        }
+      } satisfies ApiErrorResponse)
+    }
+
+    const parsed = parseCreateArtifactRequest(request.body)
+    if ('code' in parsed) {
+      return sendBadRequest(reply, parsed.message)
+    }
+
+    try {
+      if ('url' in parsed) {
+        const artifact = agentSessionService.createArtifact({
+          sessionId: params.sessionId,
+          turnId: parsed.turnId ?? null,
+          messageId: parsed.messageId ?? null,
+          kind: 'url',
+          source: 'url',
+          url: parsed.url,
+          title: parsed.title ?? parsed.url
+        })
+        return reply.code(201).send({ artifact } satisfies CreateAgentArtifactResponse)
+      }
+
+      const normalizedPath = normalizeArtifactPath(detail.session.cwd, parsed.path)
+      if (typeof normalizedPath !== 'string') {
+        return sendApiError(reply, normalizedPath)
+      }
+
+      const kind = parsed.kind ?? inferArtifactKindFromPath(normalizedPath)
+      if (!kind) {
+        return sendBadRequest(reply, 'path must be an image, PDF, Markdown, or HTML file.')
+      }
+
+      const artifact = agentSessionService.createArtifact({
+        sessionId: params.sessionId,
+        turnId: parsed.turnId ?? null,
+        messageId: parsed.messageId ?? null,
+        kind,
+        source: 'file',
+        path: normalizedPath,
+        title: parsed.title ?? path.basename(normalizedPath)
+      })
+      return reply.code(201).send({ artifact } satisfies CreateAgentArtifactResponse)
+    } catch (error) {
+      return sendServiceError(reply, error)
+    }
+  })
+
+  server.get('/api/artifacts/:artifactId/content', async (request, reply) => {
+    const params = request.params as { artifactId?: string }
+    if (!isNonEmptyString(params.artifactId)) {
+      return sendBadRequest(reply, 'artifactId is required.')
+    }
+
+    const artifact = agentSessionService.getArtifact(params.artifactId)
+    if (!artifact) {
+      return reply.code(404).send({
+        error: {
+          code: 'not_found',
+          message: 'Artifact was not found.'
+        }
+      } satisfies ApiErrorResponse)
+    }
+
+    if (artifact.kind !== 'markdown') {
+      return sendBadRequest(reply, 'Only Markdown artifacts expose text content.')
+    }
+
+    const detail = agentSessionService.getSessionDetail(artifact.sessionId)
+    if (!detail) {
+      return reply.code(404).send({
+        error: {
+          code: 'not_found',
+          message: 'Session was not found.'
+        }
+      } satisfies ApiErrorResponse)
+    }
+
+    const resolved = resolveArtifactAssetPath(artifact, detail.session.cwd, '')
+    if (typeof resolved !== 'string') {
+      return sendApiError(reply, resolved)
+    }
+
+    const content = await fs.promises.readFile(resolved, 'utf8')
+    return reply.send({
+      artifact,
+      content
+    } satisfies AgentArtifactMarkdownContentResponse)
+  })
+
+  async function sendArtifactAsset(requestParams: { artifactId?: string; '*': string | undefined }, reply: FastifyReply) {
+    if (!isNonEmptyString(requestParams.artifactId)) {
+      return sendBadRequest(reply, 'artifactId is required.')
+    }
+
+    const artifact = agentSessionService.getArtifact(requestParams.artifactId)
+    if (!artifact) {
+      return reply.code(404).send({
+        error: {
+          code: 'not_found',
+          message: 'Artifact was not found.'
+        }
+      } satisfies ApiErrorResponse)
+    }
+
+    const detail = agentSessionService.getSessionDetail(artifact.sessionId)
+    if (!detail) {
+      return reply.code(404).send({
+        error: {
+          code: 'not_found',
+          message: 'Session was not found.'
+        }
+      } satisfies ApiErrorResponse)
+    }
+
+    const resolved = resolveArtifactAssetPath(artifact, detail.session.cwd, requestParams['*'] ?? '')
+    if (typeof resolved !== 'string') {
+      return sendApiError(reply, resolved)
+    }
+
+    reply.header('Content-Type', contentTypeForPath(resolved))
+    reply.header('Content-Disposition', `inline; filename="${safeFilename(resolved)}"`)
+    reply.header('Cache-Control', 'no-store')
+    return reply.send(fs.createReadStream(resolved))
+  }
+
+  server.get('/api/artifacts/:artifactId/asset', async (request, reply) =>
+    sendArtifactAsset(request.params as { artifactId?: string; '*': string | undefined }, reply)
+  )
+
+  server.get('/api/artifacts/:artifactId/asset/*', async (request, reply) =>
+    sendArtifactAsset(request.params as { artifactId?: string; '*': string | undefined }, reply)
+  )
 
   server.get('/api/sessions/:sessionId/worktree-diff/status', async (request, reply) => {
     const params = request.params as { sessionId?: string }

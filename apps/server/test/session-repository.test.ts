@@ -307,6 +307,82 @@ test('provider file patch updates replace files for the same provider item', () 
   assert.deepEqual(projected?.diffs?.[0]?.files, [])
 })
 
+test('turn diffs create previewable file artifacts', () => {
+  const repository = new AgentSessionRepository()
+  const service = new AgentSessionService(repository)
+  const response = service.createPendingSessionForInitialMessage({
+    provider: 'codex',
+    cwd: os.tmpdir(),
+    initialMessage: 'write a report',
+    model: null,
+    runtimeMode: 'full_access'
+  })
+  const turn = response.detail.turns[0]
+  assert.ok(turn)
+
+  service.recordTurnDiff({
+    sessionId: response.sessionId,
+    turnId: turn.id,
+    provider: 'codex',
+    providerTurnId: 'provider-turn-1',
+    providerItemId: 'file-change-1',
+    files: [
+      {
+        path: 'docs/report.md',
+        previousPath: null,
+        kind: 'add',
+        diff: '--- /dev/null\n+++ b/docs/report.md\n@@ -0,0 +1 @@\n+# Report\n'
+      },
+      {
+        path: 'src/example.ts',
+        previousPath: null,
+        kind: 'update',
+        diff: '--- a/src/example.ts\n+++ b/src/example.ts\n@@ -1 +1 @@\n-a\n+b\n'
+      }
+    ]
+  })
+
+  const projected = repository.findSessionDetail(response.sessionId)
+  assert.equal(projected?.artifacts.length, 1)
+  assert.equal(projected?.artifacts[0]?.kind, 'markdown')
+  assert.equal(projected?.artifacts[0]?.source, 'file')
+  assert.equal(projected?.artifacts[0]?.path, 'docs/report.md')
+})
+
+test('url artifacts are persisted and deduped per session', () => {
+  const repository = new AgentSessionRepository()
+  const service = new AgentSessionService(repository)
+  const response = service.createPendingSessionForInitialMessage({
+    provider: 'codex',
+    cwd: os.tmpdir(),
+    initialMessage: 'open a page',
+    model: null,
+    runtimeMode: 'full_access'
+  })
+
+  const first = service.createArtifact({
+    sessionId: response.sessionId,
+    kind: 'url',
+    source: 'url',
+    url: 'https://example.com',
+    title: 'Example'
+  })
+  const second = service.createArtifact({
+    sessionId: response.sessionId,
+    kind: 'url',
+    source: 'url',
+    url: 'https://example.com',
+    title: 'Example updated'
+  })
+
+  const projected = repository.findSessionDetail(response.sessionId)
+  assert.equal(first.id, second.id)
+  assert.equal(projected?.artifacts.length, 1)
+  assert.equal(projected?.artifacts[0]?.kind, 'url')
+  assert.equal(projected?.artifacts[0]?.url, 'https://example.com')
+  assert.equal(projected?.artifacts[0]?.title, 'Example updated')
+})
+
 test('turn completion records checkpoint diff when provider emits no diff', () => {
   const cwd = createCheckpointTestRepo()
   try {

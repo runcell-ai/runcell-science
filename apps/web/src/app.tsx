@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { PanelRightOpen } from 'lucide-react'
 import type {
+  AgentArtifact,
   AgentEvent,
   AgentPendingRequest,
   AgentProvider,
@@ -10,6 +12,7 @@ import type {
   AgentSessionWorktreeDiffStatusResponse,
   AgentTurnDiff,
   AgentTurn,
+  CreateAgentArtifactResponse,
   CreateAgentSessionResponse,
   CreateAgentTurnResponse,
   InterruptAgentSessionResponse,
@@ -25,6 +28,7 @@ import {
   AgentRuntimeConfig,
   AgentSessionSidebar,
   AgentTimeline,
+  Button,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
@@ -38,6 +42,7 @@ import {
   providerLabel
 } from '@open-science/ui'
 import type { AgentProviderOption, AgentTimelineItem } from '@open-science/ui'
+import { ArtifactPreviewPanel } from './artifact-preview-panel'
 import './app.css'
 
 type RuntimeActivityEvent = Extract<RuntimeSseEvent, { type: 'activity' }>
@@ -65,6 +70,8 @@ const runtimeEventTypes: RuntimeSseEvent['type'][] = [
   'request.resolved',
   'activity',
   'diff.updated',
+  'artifact.created',
+  'artifact.updated',
   'runtime.error'
 ]
 
@@ -256,6 +263,12 @@ function applyRuntimeEvent(detail: AgentSessionDetail | null, event: RuntimeSseE
         ...detail,
         diffs: byDiffUpdatedAt(upsertById(detail.diffs ?? [], event.diff))
       }
+    case 'artifact.created':
+    case 'artifact.updated':
+      return {
+        ...detail,
+        artifacts: byCreatedAt(upsertById(detail.artifacts, event.artifact))
+      }
     default:
       return detail
   }
@@ -289,7 +302,7 @@ function timelineItemRank(item: AgentTimelineItem): number {
   return 3
 }
 
-function buildTimelineItems(detail: AgentSessionDetail | null): AgentTimelineItem[] {
+function buildTimelineItems(detail: AgentSessionDetail | null, activeArtifactId: string | null): AgentTimelineItem[] {
   if (!detail) {
     return []
   }
@@ -312,6 +325,13 @@ function buildTimelineItems(detail: AgentSessionDetail | null): AgentTimelineIte
       type: 'diff' as const,
       createdAt: diff.updatedAt,
       diff
+    })),
+    ...detail.artifacts.map((artifact) => ({
+      id: artifact.id,
+      type: 'artifact' as const,
+      createdAt: artifact.createdAt,
+      artifact,
+      active: artifact.id === activeArtifactId
     })),
     ...detail.pendingRequests.map((request) => ({
       id: request.id,
@@ -349,13 +369,23 @@ function App() {
   const [worktreeDiffOpen, setWorktreeDiffOpen] = useState(false)
   const [worktreeDiff, setWorktreeDiff] = useState<AgentSessionWorktreeDiffResponse | null>(null)
   const [isLoadingWorktreeDiff, setIsLoadingWorktreeDiff] = useState(false)
+  const [activeArtifactId, setActiveArtifactId] = useState<string | null>(null)
+  const [artifactPanelOpen, setArtifactPanelOpen] = useState(false)
+  const [artifactDraft, setArtifactDraft] = useState('')
+  const [isCreatingArtifact, setIsCreatingArtifact] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [isResolvingRequestId, setIsResolvingRequestId] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const isDraft = activeSessionId === null
   const running = isRunning(activeDetail)
-  const timelineItems = useMemo(() => buildTimelineItems(activeDetail), [activeDetail])
+  const activeArtifact = useMemo(
+    () => activeDetail?.artifacts.find((artifact) => artifact.id === activeArtifactId) ?? null,
+    [activeArtifactId, activeDetail]
+  )
+  const artifactCount = activeDetail?.artifacts.length ?? 0
+  const newestArtifactId = activeDetail?.artifacts[artifactCount - 1]?.id ?? null
+  const timelineItems = useMemo(() => buildTimelineItems(activeDetail, activeArtifactId), [activeArtifactId, activeDetail])
 
   const loadSessions = useCallback(async () => {
     const response = await requestJson<ListAgentSessionsResponse>('/api/sessions')
@@ -368,6 +398,9 @@ function App() {
     setWorktreeDiffStatus('checking')
     setWorktreeDiffOpen(false)
     setWorktreeDiff(null)
+    setActiveArtifactId(null)
+    setArtifactPanelOpen(false)
+    setArtifactDraft('')
     setActiveSessionId(sessionId)
     const [detail, diffStatus] = await Promise.all([
       requestJson<AgentSessionDetail>(`/api/sessions/${sessionId}`),
@@ -386,6 +419,9 @@ function App() {
     setWorktreeDiffStatus('unknown')
     setWorktreeDiffOpen(false)
     setWorktreeDiff(null)
+    setActiveArtifactId(null)
+    setArtifactPanelOpen(false)
+    setArtifactDraft('')
     setErrorMessage(null)
     setMessageDraft('')
   }, [])
@@ -436,6 +472,22 @@ function App() {
     }
   }, [activeSessionId, loadSessions])
 
+  useEffect(() => {
+    if (!activeSessionId) {
+      setArtifactPanelOpen(false)
+      setActiveArtifactId(null)
+      return
+    }
+
+    if (!newestArtifactId) {
+      setActiveArtifactId(null)
+      return
+    }
+
+    setActiveArtifactId(newestArtifactId)
+    setArtifactPanelOpen(true)
+  }, [activeSessionId, newestArtifactId])
+
   const sendMessage = useCallback(async () => {
     const text = messageDraft.trim()
     if (!text || isSending || running) {
@@ -458,6 +510,8 @@ function App() {
         setMessageDraft('')
         setActiveDetail(response.detail)
         setActiveSessionId(response.sessionId)
+        setActiveArtifactId(null)
+        setArtifactPanelOpen(false)
         setWorktreeDiffStatus('checking')
         const diffStatus = await requestJson<AgentSessionWorktreeDiffStatusResponse>(
           `/api/sessions/${response.sessionId}/worktree-diff/status`
@@ -504,6 +558,61 @@ function App() {
       setIsLoadingWorktreeDiff(false)
     }
   }, [activeSessionId, worktreeDiffStatus])
+
+  const openArtifact = useCallback((artifact: AgentArtifact) => {
+    setActiveArtifactId(artifact.id)
+    setArtifactPanelOpen(true)
+    setArtifactDraft('')
+  }, [])
+
+  const closeArtifactPreview = useCallback(() => {
+    setActiveArtifactId(null)
+    setArtifactPanelOpen(false)
+  }, [])
+
+  const openArtifactPanel = useCallback(() => {
+    setActiveArtifactId((current) => current ?? newestArtifactId)
+    setArtifactPanelOpen(true)
+  }, [newestArtifactId])
+
+  const createArtifact = useCallback(
+    async (value: string) => {
+      if (!activeSessionId || isCreatingArtifact) {
+        return
+      }
+
+      const trimmed = value.trim()
+      if (!trimmed) {
+        return
+      }
+
+      setIsCreatingArtifact(true)
+      setErrorMessage(null)
+      try {
+        const isUrl = /^https?:\/\//i.test(trimmed)
+        const response = await requestJson<CreateAgentArtifactResponse>(`/api/sessions/${activeSessionId}/artifacts`, {
+          method: 'POST',
+          body: JSON.stringify(isUrl ? { url: trimmed } : { path: trimmed })
+        })
+        setActiveDetail((detail) =>
+          detail
+            ? {
+                ...detail,
+                artifacts: byCreatedAt(upsertById(detail.artifacts, response.artifact))
+              }
+            : detail
+        )
+        setActiveArtifactId(response.artifact.id)
+        setArtifactPanelOpen(true)
+        setArtifactDraft('')
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : String(error))
+      } finally {
+        setIsCreatingArtifact(false)
+      }
+    },
+    [activeSessionId, isCreatingArtifact]
+  )
 
   const interruptSession = useCallback(async () => {
     if (!activeSessionId || !running) {
@@ -567,7 +676,7 @@ function App() {
 
           <ResizableHandle withHandle />
 
-          <ResizablePanel defaultSize={78} minSize={48} className="panel chat-panel">
+          <ResizablePanel defaultSize={artifactPanelOpen && activeSessionId ? 44 : 78} minSize={48} className="panel chat-panel">
             <AgentConversationHeader
               title={activeTitle}
               providerLabel={activeDetail ? providerLabel(activeDetail.session.provider) : providerLabel(provider)}
@@ -593,11 +702,21 @@ function App() {
 
             <AgentErrorBanner message={errorMessage} />
 
+            {activeSessionId && !artifactPanelOpen ? (
+              <div className="artifact-inline-entry">
+                <Button type="button" variant="outline" size="sm" onClick={openArtifactPanel}>
+                  <PanelRightOpen />
+                  Artifacts{artifactCount > 0 ? ` (${artifactCount})` : ''}
+                </Button>
+              </div>
+            ) : null}
+
             <AgentTimeline
               items={timelineItems}
               running={running}
               resolvingRequestId={isResolvingRequestId}
               onResolveRequest={(request, decision) => void resolveRequest(request, decision)}
+              onOpenArtifact={openArtifact}
             />
 
             <AgentPromptComposer
@@ -627,6 +746,23 @@ function App() {
               </SheetContent>
             </Sheet>
           </ResizablePanel>
+
+          {activeSessionId && artifactPanelOpen ? (
+            <>
+              <ResizableHandle withHandle />
+              <ResizablePanel defaultSize={34} minSize={24} maxSize={52} className="panel artifact-panel">
+                <ArtifactPreviewPanel
+                  artifact={activeArtifact}
+                  apiBaseUrl={apiBaseUrl}
+                  draft={artifactDraft}
+                  creating={isCreatingArtifact}
+                  onDraftChange={setArtifactDraft}
+                  onCreate={(value) => void createArtifact(value)}
+                  onClose={closeArtifactPreview}
+                />
+              </ResizablePanel>
+            </>
+          ) : null}
         </ResizablePanelGroup>
       </div>
     </TooltipProvider>
