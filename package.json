@@ -1,0 +1,24 @@
+{
+  "name": "open-science",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "yarn@4.5.1",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n web,server -c cyan,magenta \"yarn dev:web\" \"yarn dev:server\"",
+    "dev:web": "mkdir -p logs/dev && yarn --cwd apps/web run dev | tee logs/dev/web.log",
+    "dev:server": "mkdir -p logs/dev && yarn --cwd apps/server run dev | tee logs/dev/server.log",
+    "build": "yarn workspaces foreach -A -t run build",
+    "typecheck": "yarn workspaces foreach -A -t run typecheck",
+    "lint": "yarn workspaces foreach -A run lint",
+    "db:migrate": "yarn --cwd apps/server run db:migrate"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.17",
+    "concurrently": "^9.1.2",
+    "typescript": "^5.8.3"
+  }
+}

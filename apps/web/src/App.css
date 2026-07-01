@@ -1,0 +1,98 @@
+.app-shell {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+.shell-grid {
+  height: calc(100vh - 24px);
+  min-height: calc(100vh - 24px);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.panel {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.panel-title {
+  margin: 0 0 12px;
+  font-size: 18px;
+  color: #101828;
+  line-height: 1.2;
+}
+
+.panel-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+.panel-empty-state,
+.chat-content,
+.artifacts-shell {
+  color: #475467;
+  font-size: 14px;
+}
+
+.panel-footer {
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+
+.chat-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chat-content {
+  flex: 1;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.chat-input-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.artifacts-shell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.artifacts-separator {
+  margin: 2px 0;
+}
+
+.artifacts-button {
+  align-self: flex-start;
+}
+
+@media (max-width: 960px) {
+  .app-shell {
+    padding: 0;
+  }
+
+  .shell-grid {
+    height: 100vh;
+    border-radius: 0;
+  }
+
+  .panel-title {
+    font-size: 18px;
+  }
+}
