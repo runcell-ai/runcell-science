@@ -189,27 +189,29 @@ export class ClaudeRuntime implements CodeAgentProviderRuntime {
   }
 
   private handleStreamEvent(activeTurn: ClaudeActiveTurn, message: SDKPartialAssistantMessage): void {
-    const event = message.event as StreamEventPayload
+    const textDelta = extractClaudeStreamTextDelta(message)
 
-    if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta' && event.delta.text) {
-      activeTurn.streamedAssistantChars += event.delta.text.length
+    if (textDelta) {
+      activeTurn.streamedAssistantChars += textDelta.length
       agentSessionService.appendAssistantMessageDelta({
         sessionId: activeTurn.sessionId,
         turnId: activeTurn.turnId,
         provider: 'claude',
-        delta: event.delta.text,
+        delta: textDelta,
         providerItemId: assistantProviderItemId(activeTurn),
         rawSource: 'claude.agent-sdk.stream_event',
         rawJson: message,
         canonicalJson: {
           type: 'content.delta',
           streamKind: 'assistant_text',
-          delta: event.delta.text,
+          delta: textDelta,
           providerItemId: assistantProviderItemId(activeTurn)
         }
       })
       return
     }
+
+    const event = message.event as StreamEventPayload
 
     if (event.type === 'content_block_start') {
       this.recordActivity(
@@ -315,8 +317,21 @@ export class ClaudeRuntime implements CodeAgentProviderRuntime {
   }
 }
 
+export function claudeAssistantProviderItemId(turnId: string): string {
+  return `claude:${turnId}:assistant`
+}
+
+export function extractClaudeStreamTextDelta(message: SDKPartialAssistantMessage): string | null {
+  const event = message.event as StreamEventPayload
+  if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta' && event.delta.text) {
+    return event.delta.text
+  }
+
+  return null
+}
+
 function assistantProviderItemId(activeTurn: ClaudeActiveTurn): string {
-  return `claude:${activeTurn.turnId}:assistant`
+  return claudeAssistantProviderItemId(activeTurn.turnId)
 }
 
 function errorResultText(message: SDKResultMessage): string {
