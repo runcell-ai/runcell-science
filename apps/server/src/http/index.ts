@@ -3,6 +3,7 @@ import fastify from 'fastify'
 import { config } from '../config/env'
 import { registerServerPlugins } from './plugins/placeholder'
 import { healthRoute } from './routes/health'
+import { sessionsRoute } from './routes/sessions'
 
 export function createServer() {
   const server = fastify({
@@ -13,6 +14,7 @@ export function createServer() {
 
   return server
     .register(healthRoute)
+    .register(sessionsRoute)
     .after(async () => {
       await registerServerPlugins(server)
     })

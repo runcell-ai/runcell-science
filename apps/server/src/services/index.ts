@@ -1,3 +1,2 @@
-export const serviceBoundary = {
-  description: 'Service layer placeholder for future domain orchestration.'
-}
+export { AgentSessionRepository } from './agent-session-repository'
+export { AgentSessionService, agentSessionService } from './agent-session-service'

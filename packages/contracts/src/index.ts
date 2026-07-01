@@ -13,3 +13,165 @@ export interface ApiInfo {
   version: string
   environment: string
 }
+
+export type AgentProvider = 'codex' | 'claude'
+
+export type AgentRuntimeMode = 'full_access' | 'default'
+
+export type AgentSessionStatus =
+  | 'pending_activation'
+  | 'ready'
+  | 'running'
+  | 'waiting'
+  | 'stopped'
+  | 'error'
+
+export type AgentTurnStatus = 'running' | 'completed' | 'failed' | 'interrupted'
+
+export type AgentMessageRole = 'user' | 'assistant' | 'system'
+
+export type AgentMessageStatus = 'pending' | 'streaming' | 'completed' | 'failed'
+
+export type AgentPendingRequestStatus = 'open' | 'resolved'
+
+export interface AgentSession {
+  id: string
+  provider: AgentProvider
+  title: string | null
+  cwd: string
+  model: string | null
+  runtimeMode: AgentRuntimeMode
+  permissionMode: string | null
+  status: AgentSessionStatus
+  activatedAt: string | null
+  providerSessionId: string | null
+  providerThreadId: string | null
+  resumeCursorJson: string | null
+  lastError: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AgentSessionSummary {
+  id: string
+  provider: AgentProvider
+  title: string | null
+  cwd: string
+  model: string | null
+  runtimeMode: AgentRuntimeMode
+  status: Exclude<AgentSessionStatus, 'pending_activation'>
+  activatedAt: string
+  updatedAt: string
+}
+
+export interface AgentTurn {
+  id: string
+  sessionId: string
+  providerTurnId: string | null
+  status: AgentTurnStatus
+  requestedAt: string
+  completedAt: string | null
+  error: string | null
+}
+
+export interface AgentMessage {
+  id: string
+  sessionId: string
+  turnId: string | null
+  role: AgentMessageRole
+  text: string
+  status: AgentMessageStatus
+  providerItemId: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AgentPendingRequest {
+  id: string
+  sessionId: string
+  turnId: string
+  type: string
+  status: AgentPendingRequestStatus
+  title: string | null
+  payloadJson: string
+  responseJson: string | null
+  createdAt: string
+  resolvedAt: string | null
+}
+
+export interface AgentSessionDetail {
+  session: AgentSession
+  turns: AgentTurn[]
+  messages: AgentMessage[]
+  pendingRequests: AgentPendingRequest[]
+}
+
+export interface CreateAgentSessionRequest {
+  provider: AgentProvider
+  cwd: string
+  initialMessage: string
+  model?: string | null
+  runtimeMode?: AgentRuntimeMode
+}
+
+export interface CreateAgentSessionResponse {
+  sessionId: string
+  detail: AgentSessionDetail
+}
+
+export interface CreateAgentTurnRequest {
+  message: string
+}
+
+export interface CreateAgentTurnResponse {
+  turn: AgentTurn
+}
+
+export interface ResolveAgentRequestRequest {
+  decision: 'allow' | 'deny' | 'answer'
+  answer?: string
+}
+
+export interface RuntimeSseEventBase {
+  id: string
+  sessionId: string
+  turnId?: string | null
+  createdAt: string
+}
+
+export type RuntimeSseEvent =
+  | (RuntimeSseEventBase & {
+      type: 'session.updated'
+      session: AgentSession
+    })
+  | (RuntimeSseEventBase & {
+      type: 'turn.started' | 'turn.completed' | 'turn.failed' | 'turn.interrupted'
+      turn: AgentTurn
+    })
+  | (RuntimeSseEventBase & {
+      type: 'message.created' | 'message.delta' | 'message.completed'
+      message: AgentMessage
+      delta?: string
+    })
+  | (RuntimeSseEventBase & {
+      type: 'request.opened' | 'request.resolved'
+      request: AgentPendingRequest
+    })
+  | (RuntimeSseEventBase & {
+      type: 'activity'
+      eventType: string
+      title: string
+      summary?: string
+      status?: string
+    })
+  | (RuntimeSseEventBase & {
+      type: 'runtime.error'
+      message: string
+    })
+
+export interface ApiErrorResponse {
+  error: {
+    code: string
+    message: string
+  }
+}
