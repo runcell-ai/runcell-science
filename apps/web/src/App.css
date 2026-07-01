@@ -1,9 +1,11 @@
 .app-shell {
   width: 100%;
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
   display: flex;
   padding: 12px;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 .shell-grid {
@@ -21,6 +23,7 @@
   flex-direction: column;
   min-height: 0;
   min-width: 0;
+  overflow: hidden;
 }
 
 .panel-title {
@@ -59,19 +62,25 @@
 }
 
 .panel-scroll,
-.chat-scroll,
-.activity-scroll {
+.chat-scroll {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 .session-list,
-.message-list,
-.activity-list {
+.timeline-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
   padding: 10px 1px 2px;
+}
+
+.conversation-header,
+.runtime-config,
+.error-banner,
+.composer {
+  flex: 0 0 auto;
 }
 
 .panel-empty-state,
@@ -298,12 +307,12 @@
   margin-top: 1px;
 }
 
-.message-list {
+.timeline-list {
   gap: 12px;
   padding-right: 4px;
 }
 
-.message-row {
+.timeline-row {
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr);
   gap: 10px;
@@ -400,46 +409,53 @@
   min-width: 84px;
 }
 
-.request-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.request-bar {
+.request-card,
+.activity-body {
+  min-width: 0;
   border: 1px solid #fedf89;
   border-radius: 8px;
   background: #fffaeb;
   padding: 10px;
+}
+
+.request-card {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.request-title {
-  display: block;
+.request-resolved .request-card {
+  border-color: #d0d5dd;
+  background: #f9fafb;
+}
+
+.request-copy,
+.activity-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.request-title,
+.activity-title-row {
   color: #101828;
   font-size: 13px;
-  font-weight: 700;
-  line-height: 1.3;
+  font-weight: 650;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
-.request-status {
-  color: #b54708;
-  font-size: 12px;
-}
-
-.activity-separator {
-  margin: 12px 0 2px;
-}
-
-.activity-item {
+.activity-marker {
+  width: 30px;
+  height: 30px;
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
-  gap: 9px;
-  padding: 9px 0;
-  border-bottom: 1px solid #f2f4f7;
+  place-items: center;
+}
+
+.activity-body {
+  border-color: #e4e7ec;
+  background: #ffffff;
 }
 
 .activity-icon {
@@ -461,23 +477,12 @@
   color: #2563eb;
 }
 
-.activity-copy {
-  min-width: 0;
-}
-
-.activity-title-row {
-  align-items: flex-start;
-  color: #101828;
-  font-size: 13px;
-  font-weight: 650;
-  line-height: 1.35;
-}
-
-.activity-copy p {
+.activity-body p {
   margin: 5px 0 0;
   color: #667085;
   font-size: 12px;
   line-height: 1.4;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 

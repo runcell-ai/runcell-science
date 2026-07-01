@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 
 import type {
+  AgentEvent,
   AgentMessage,
   AgentMessageRole,
   AgentMessageStatus,
@@ -71,6 +72,21 @@ interface AgentPendingRequestRow {
   resolved_at: string | null
 }
 
+interface AgentEventRow {
+  id: string
+  session_id: string
+  turn_id: string | null
+  provider: AgentProvider
+  event_type: string
+  stream_kind: string | null
+  title: string | null
+  summary: string | null
+  status: string | null
+  raw_json: string | null
+  canonical_json: string | null
+  created_at: string
+}
+
 export interface CreatePendingAgentSessionInput {
   provider: AgentProvider
   cwd: string
@@ -95,6 +111,9 @@ export interface PersistAgentEventInput {
   provider: AgentProvider
   eventType: string
   streamKind?: string | null
+  title?: string | null
+  summary?: string | null
+  status?: string | null
   rawSource?: string | null
   rawJson?: unknown
   canonicalJson?: unknown
@@ -237,6 +256,136 @@ function mapPendingRequest(row: AgentPendingRequestRow): AgentPendingRequest {
     responseJson: row.response_json,
     createdAt: row.created_at,
     resolvedAt: row.resolved_at
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function parseJsonRecord(value: string | null): Record<string, unknown> | null {
+  if (!value) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown
+    return isRecord(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function recordField(value: Record<string, unknown> | null, field: string): Record<string, unknown> | null {
+  const fieldValue = value?.[field]
+  return isRecord(fieldValue) ? fieldValue : null
+}
+
+function stringField(value: Record<string, unknown> | null, field: string): string | null {
+  const fieldValue = value?.[field]
+  return typeof fieldValue === 'string' ? fieldValue : null
+}
+
+function arrayLengthField(value: Record<string, unknown> | null, field: string): number | null {
+  const fieldValue = value?.[field]
+  return Array.isArray(fieldValue) ? fieldValue.length : null
+}
+
+function rawThreadItem(row: AgentEventRow): Record<string, unknown> | null {
+  return recordField(recordField(parseJsonRecord(row.raw_json), 'params'), 'item')
+}
+
+function canonicalEvent(row: AgentEventRow): Record<string, unknown> | null {
+  return parseJsonRecord(row.canonical_json)
+}
+
+function rawThreadItemType(row: AgentEventRow): string | null {
+  return stringField(rawThreadItem(row), 'type') ?? stringField(canonicalEvent(row), 'itemType')
+}
+
+function shouldProjectEvent(row: AgentEventRow): boolean {
+  if (row.event_type !== 'item.started' && row.event_type !== 'item.completed') {
+    return true
+  }
+
+  const itemType = rawThreadItemType(row)
+  return (
+    itemType !== 'userMessage' &&
+    itemType !== 'agentMessage' &&
+    itemType !== 'reasoning' &&
+    itemType !== 'plan' &&
+    itemType !== 'hookPrompt'
+  )
+}
+
+function fallbackStatusForEvent(row: AgentEventRow): string | null {
+  if (row.event_type.endsWith('.started') || row.event_type.endsWith('/started')) {
+    return 'started'
+  }
+  if (row.event_type.endsWith('.completed') || row.event_type.endsWith('/completed')) {
+    return 'completed'
+  }
+  return null
+}
+
+function fallbackTitleForEvent(row: AgentEventRow): string | null {
+  const item = rawThreadItem(row)
+  const itemType = stringField(item, 'type') ?? stringField(canonicalEvent(row), 'itemType')
+
+  switch (itemType) {
+    case 'commandExecution':
+      return 'Command'
+    case 'fileChange':
+      return 'File change'
+    case 'mcpToolCall':
+      return stringField(item, 'tool') ? `MCP tool: ${stringField(item, 'tool')}` : 'MCP tool'
+    case 'dynamicToolCall':
+      return stringField(item, 'tool') ? `Tool: ${stringField(item, 'tool')}` : 'Tool'
+    case 'webSearch':
+      return 'Web search'
+    default:
+      return null
+  }
+}
+
+function fallbackSummaryForEvent(row: AgentEventRow): string | null {
+  const item = rawThreadItem(row)
+  const itemType = stringField(item, 'type') ?? stringField(canonicalEvent(row), 'itemType')
+
+  switch (itemType) {
+    case 'commandExecution':
+      return stringField(item, 'command')
+    case 'fileChange': {
+      const changes = arrayLengthField(item, 'changes')
+      return changes === null ? null : `${changes} file change${changes === 1 ? '' : 's'}`
+    }
+    case 'mcpToolCall':
+      return stringField(item, 'server')
+    case 'dynamicToolCall':
+      return stringField(item, 'namespace')
+    case 'webSearch':
+      return stringField(item, 'query')
+    default:
+      return null
+  }
+}
+
+function mapEvent(row: AgentEventRow): AgentEvent | null {
+  if (!shouldProjectEvent(row)) {
+    return null
+  }
+
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    turnId: row.turn_id,
+    provider: row.provider,
+    eventType: row.event_type,
+    streamKind: row.stream_kind,
+    title: row.title ?? fallbackTitleForEvent(row),
+    summary: row.summary ?? fallbackSummaryForEvent(row),
+    status: row.status ?? fallbackStatusForEvent(row),
+    createdAt: row.created_at
   }
 }
 
@@ -429,10 +578,35 @@ export class AgentSessionRepository {
       )
       .all(sessionId) as AgentPendingRequestRow[]
 
+    const eventRows = db
+      .prepare(
+        `
+          SELECT
+            id,
+            session_id,
+            turn_id,
+            provider,
+            event_type,
+            stream_kind,
+            title,
+            summary,
+            status,
+            raw_json,
+            canonical_json,
+            created_at
+          FROM agent_events
+          WHERE session_id = ?
+            AND event_type NOT IN ('content.delta', 'stderr')
+          ORDER BY created_at ASC
+        `
+      )
+      .all(sessionId) as AgentEventRow[]
+
     return {
       session: mapSession(sessionRow),
       turns: turnRows.map(mapTurn),
       messages: messageRows.map(mapMessage),
+      events: eventRows.map(mapEvent).filter((event): event is AgentEvent => Boolean(event)),
       pendingRequests: pendingRequestRows.map(mapPendingRequest)
     }
   }
@@ -882,12 +1056,15 @@ export class AgentSessionRepository {
             provider,
             event_type,
             stream_kind,
+            title,
+            summary,
+            status,
             raw_source,
             raw_json,
             canonical_json,
             created_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `
       )
       .run(
@@ -897,6 +1074,9 @@ export class AgentSessionRepository {
         input.provider,
         input.eventType,
         input.streamKind ?? null,
+        input.title ?? null,
+        input.summary ?? null,
+        input.status ?? null,
         input.rawSource ?? null,
         stringifyJson(input.rawJson),
         stringifyJson(input.canonicalJson),

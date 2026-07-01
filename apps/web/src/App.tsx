@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type KeyboardEvent } from 'react'
 import type {
+  AgentEvent,
   AgentMessage,
   AgentPendingRequest,
   AgentProvider,
@@ -34,17 +35,28 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
 import './App.css'
 
-type ActivityItem = {
+type TimelineItem = {
   id: string
-  title: string
-  summary?: string
-  status?: string
   createdAt: string
-}
+} & (
+  | {
+      type: 'message'
+      message: AgentMessage
+    }
+  | {
+      type: 'activity'
+      event: AgentEvent
+    }
+  | {
+      type: 'request'
+      request: AgentPendingRequest
+    }
+)
+
+type RuntimeActivityEvent = Extract<RuntimeSseEvent, { type: 'activity' }>
 
 type ProviderOption = {
   value: AgentProvider
@@ -74,6 +86,24 @@ const runtimeEventTypes: RuntimeSseEvent['type'][] = [
   'activity',
   'runtime.error'
 ]
+
+const hiddenActivityEventTypes = new Set([
+  'account/rateLimits/updated',
+  'mcpServer/startupStatus/updated',
+  'remoteControl/status/changed',
+  'skills/changed',
+  'thread/started',
+  'thread/status/changed',
+  'thread/tokenUsage/updated',
+  'turn/started',
+  'claude.rate_limit_event',
+  'claude.stream.content_block_delta',
+  'claude.stream.message_delta',
+  'claude.stream.message_start',
+  'claude.stream.message_stop',
+  'claude.system.init',
+  'claude.system.status'
+])
 
 function apiUrl(path: string): string {
   return `${apiBaseUrl}${path}`
@@ -158,6 +188,29 @@ function upsertSessionSummary(items: AgentSessionSummary[], session: AgentSessio
   return upsertById(items, summary).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
 }
 
+function isVisibleActivityEvent(eventType: string): boolean {
+  return eventType !== 'stderr' && eventType !== 'content.delta' && !hiddenActivityEventTypes.has(eventType)
+}
+
+function eventFromRuntimeActivity(event: RuntimeActivityEvent, provider: AgentProvider): AgentEvent | null {
+  if (!isVisibleActivityEvent(event.eventType)) {
+    return null
+  }
+
+  return {
+    id: event.id,
+    sessionId: event.sessionId,
+    turnId: event.turnId ?? null,
+    provider,
+    eventType: event.eventType,
+    streamKind: null,
+    title: event.title,
+    summary: visibleActivitySummary(event.summary) ?? null,
+    status: event.status ?? null,
+    createdAt: event.createdAt
+  }
+}
+
 function applyRuntimeEvent(detail: AgentSessionDetail | null, event: RuntimeSseEvent): AgentSessionDetail | null {
   if (event.type === 'session.snapshot') {
     return event.detail
@@ -194,77 +247,18 @@ function applyRuntimeEvent(detail: AgentSessionDetail | null, event: RuntimeSseE
         ...detail,
         pendingRequests: byCreatedAt(upsertById(detail.pendingRequests, event.request))
       }
+    case 'activity': {
+      const activityEvent = eventFromRuntimeActivity(event, detail.session.provider)
+      if (!activityEvent) {
+        return detail
+      }
+      return {
+        ...detail,
+        events: byCreatedAt(upsertById(detail.events, activityEvent))
+      }
+    }
     default:
       return detail
-  }
-}
-
-function activityFromEvent(event: RuntimeSseEvent): ActivityItem | null {
-  switch (event.type) {
-    case 'activity':
-      if (event.eventType === 'stderr') {
-        return null
-      }
-      return {
-        id: event.id,
-        title: event.title,
-        summary: visibleActivitySummary(event.summary),
-        status: event.status,
-        createdAt: event.createdAt
-      }
-    case 'turn.started':
-      return {
-        id: event.id,
-        title: 'Turn started',
-        status: event.turn.status,
-        createdAt: event.createdAt
-      }
-    case 'turn.completed':
-      return {
-        id: event.id,
-        title: 'Turn completed',
-        status: event.turn.status,
-        createdAt: event.createdAt
-      }
-    case 'turn.failed':
-      return {
-        id: event.id,
-        title: 'Turn failed',
-        summary: event.turn.error ?? undefined,
-        status: event.turn.status,
-        createdAt: event.createdAt
-      }
-    case 'turn.interrupted':
-      return {
-        id: event.id,
-        title: 'Turn interrupted',
-        status: event.turn.status,
-        createdAt: event.createdAt
-      }
-    case 'request.opened':
-      return {
-        id: event.id,
-        title: event.request.title ?? event.request.type,
-        status: event.request.status,
-        createdAt: event.createdAt
-      }
-    case 'request.resolved':
-      return {
-        id: event.id,
-        title: event.request.title ?? event.request.type,
-        status: event.request.status,
-        createdAt: event.createdAt
-      }
-    case 'runtime.error':
-      return {
-        id: event.id,
-        title: 'Runtime error',
-        summary: event.message,
-        status: 'error',
-        createdAt: event.createdAt
-      }
-    default:
-      return null
   }
 }
 
@@ -338,6 +332,79 @@ function compactText(value: string, maxLength = 88): string {
   return `${normalized.slice(0, maxLength - 1)}...`
 }
 
+function eventTitle(event: AgentEvent): string {
+  const title = event.title?.trim()
+  if (title) {
+    return title
+  }
+
+  return event.eventType
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[./_-]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function eventSummary(event: AgentEvent): string | undefined {
+  return visibleActivitySummary(event.summary ?? undefined)
+}
+
+function timelineItemRank(item: TimelineItem): number {
+  if (item.type === 'message') {
+    if (item.message.role === 'user') {
+      return 0
+    }
+    return 4
+  }
+  if (item.type === 'activity') {
+    if (item.event.status === 'completed' || item.event.status === 'resolved') {
+      return 2
+    }
+    return 1
+  }
+  return 3
+}
+
+function buildTimelineItems(detail: AgentSessionDetail | null): TimelineItem[] {
+  if (!detail) {
+    return []
+  }
+
+  const items: TimelineItem[] = [
+    ...detail.messages.map((message) => ({
+      id: message.id,
+      type: 'message' as const,
+      createdAt: message.createdAt,
+      message
+    })),
+    ...detail.events.filter((event) => isVisibleActivityEvent(event.eventType)).map((event) => ({
+      id: event.id,
+      type: 'activity' as const,
+      createdAt: event.createdAt,
+      event
+    })),
+    ...detail.pendingRequests.map((request) => ({
+      id: request.id,
+      type: 'request' as const,
+      createdAt: request.createdAt,
+      request
+    }))
+  ]
+
+  return items.sort((left, right) => {
+    const createdOrder = left.createdAt.localeCompare(right.createdAt)
+    if (createdOrder !== 0) {
+      return createdOrder
+    }
+
+    const rankOrder = timelineItemRank(left) - timelineItemRank(right)
+    if (rankOrder !== 0) {
+      return rankOrder
+    }
+
+    return left.id.localeCompare(right.id)
+  })
+}
+
 function PanelTitle({ label }: { label: string }) {
   return <h2 className="panel-title">{label}</h2>
 }
@@ -346,14 +413,14 @@ function StatusPill({ status }: { status: string }) {
   return <span className={`status-pill status-${status}`}>{statusLabel(status)}</span>
 }
 
-function ActivityIcon({ item }: { item: ActivityItem }) {
-  if (item.status === 'completed' || item.status === 'resolved') {
+function ActivityIcon({ status }: { status?: string | null }) {
+  if (status === 'completed' || status === 'resolved') {
     return <CheckCircle2 className="activity-icon activity-icon-success" />
   }
-  if (item.status === 'failed' || item.status === 'error') {
+  if (status === 'failed' || status === 'error') {
     return <AlertTriangle className="activity-icon activity-icon-error" />
   }
-  if (item.status === 'running' || item.status === 'started' || item.status === 'open') {
+  if (status === 'running' || status === 'started' || status === 'open') {
     return <Loader2 className="activity-icon activity-icon-running" />
   }
   return <Terminal className="activity-icon" />
@@ -374,7 +441,6 @@ function App() {
   const [provider, setProvider] = useState<AgentProvider>('codex')
   const [cwd, setCwd] = useState(readStoredCwd)
   const [messageDraft, setMessageDraft] = useState('')
-  const [activities, setActivities] = useState<ActivityItem[]>([])
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connecting' | 'live' | 'error'>('idle')
   const [isSending, setIsSending] = useState(false)
   const [isResolvingRequestId, setIsResolvingRequestId] = useState<string | null>(null)
@@ -382,11 +448,7 @@ function App() {
 
   const isDraft = activeSessionId === null
   const running = isRunning(activeDetail)
-  const sortedMessages = useMemo(() => byCreatedAt(activeDetail?.messages ?? []), [activeDetail?.messages])
-  const openRequests = useMemo(
-    () => (activeDetail?.pendingRequests ?? []).filter((request) => request.status === 'open'),
-    [activeDetail?.pendingRequests]
-  )
+  const timelineItems = useMemo(() => buildTimelineItems(activeDetail), [activeDetail])
 
   const loadSessions = useCallback(async () => {
     const response = await requestJson<ListAgentSessionsResponse>('/api/sessions')
@@ -397,7 +459,6 @@ function App() {
     setErrorMessage(null)
     setConnectionStatus('connecting')
     setActiveSessionId(sessionId)
-    setActivities([])
     const detail = await requestJson<AgentSessionDetail>(`/api/sessions/${sessionId}`)
     setActiveDetail(detail)
   }, [])
@@ -405,7 +466,6 @@ function App() {
   const startDraft = useCallback(() => {
     setActiveSessionId(null)
     setActiveDetail(null)
-    setActivities([])
     setConnectionStatus('idle')
     setErrorMessage(null)
     setMessageDraft('')
@@ -436,11 +496,6 @@ function App() {
     const handleEvent = (message: MessageEvent<string>) => {
       const event = JSON.parse(message.data) as RuntimeSseEvent
       setActiveDetail((detail) => applyRuntimeEvent(detail, event))
-
-      const activity = activityFromEvent(event)
-      if (activity) {
-        setActivities((items) => [...items, activity].slice(-80))
-      }
 
       if (event.type === 'session.updated') {
         setSessions((items) => upsertSessionSummary(items, event.session))
@@ -482,7 +537,6 @@ function App() {
           })
         })
         setMessageDraft('')
-        setActivities([])
         setActiveDetail(response.detail)
         setActiveSessionId(response.sessionId)
       } else if (activeSessionId) {
@@ -615,7 +669,7 @@ function App() {
 
           <ResizableHandle withHandle />
 
-          <ResizablePanel defaultSize={48} minSize={36} className="panel chat-panel">
+          <ResizablePanel defaultSize={78} minSize={48} className="panel chat-panel">
             <div className="conversation-header">
               <div className="conversation-title-group">
                 <h1 className="conversation-title">{activeTitle}</h1>
@@ -687,24 +741,81 @@ function App() {
             ) : null}
 
             <ScrollArea className="chat-scroll">
-              <div className="message-list">
-                {sortedMessages.length === 0 ? (
+              <div className="timeline-list">
+                {timelineItems.length === 0 ? (
                   <div className="chat-empty-state">No messages</div>
                 ) : (
-                  sortedMessages.map((message) => (
-                    <article key={message.id} className={`message-row message-${message.role}`}>
-                      <div className="message-avatar">
-                        <MessageIcon role={message.role} />
-                      </div>
-                      <div className="message-body">
-                        <div className="message-heading">
-                          <span>{message.role === 'assistant' ? 'Assistant' : 'User'}</span>
-                          <span>{statusLabel(message.status)}</span>
+                  timelineItems.map((item) => {
+                    if (item.type === 'message') {
+                      return (
+                        <article key={item.id} className={`timeline-row message-row message-${item.message.role}`}>
+                          <div className="message-avatar">
+                            <MessageIcon role={item.message.role} />
+                          </div>
+                          <div className="message-body">
+                            <div className="message-heading">
+                              <span>{item.message.role === 'assistant' ? 'Assistant' : 'User'}</span>
+                              <span>{statusLabel(item.message.status)}</span>
+                            </div>
+                            <p>{item.message.text}</p>
+                          </div>
+                        </article>
+                      )
+                    }
+
+                    if (item.type === 'request') {
+                      const isOpen = item.request.status === 'open'
+                      return (
+                        <article key={item.id} className={`timeline-row request-row request-${item.request.status}`}>
+                          <div className="activity-marker">
+                            <ActivityIcon status={item.request.status} />
+                          </div>
+                          <div className="request-card">
+                            <div className="request-copy">
+                              <span className="request-title">{item.request.title ?? item.request.type}</span>
+                              <StatusPill status={item.request.status} />
+                            </div>
+                            {isOpen ? (
+                              <div className="request-actions">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={isResolvingRequestId === item.request.id}
+                                  onClick={() => void resolveRequest(item.request, 'deny')}
+                                >
+                                  Deny
+                                </Button>
+                                <Button
+                                  className="primary-action"
+                                  size="sm"
+                                  disabled={isResolvingRequestId === item.request.id}
+                                  onClick={() => void resolveRequest(item.request, 'allow')}
+                                >
+                                  Allow
+                                </Button>
+                              </div>
+                            ) : null}
+                          </div>
+                        </article>
+                      )
+                    }
+
+                    const summary = eventSummary(item.event)
+                    return (
+                      <article key={item.id} className="timeline-row activity-row">
+                        <div className="activity-marker">
+                          <ActivityIcon status={item.event.status} />
                         </div>
-                        <p>{message.text}</p>
-                      </div>
-                    </article>
-                  ))
+                        <div className="activity-body">
+                          <div className="activity-title-row">
+                            <span>{eventTitle(item.event)}</span>
+                            {item.event.status ? <StatusPill status={item.event.status} /> : null}
+                          </div>
+                          {summary ? <p>{compactText(summary, 220)}</p> : null}
+                        </div>
+                      </article>
+                    )
+                  })
                 )}
                 {running ? (
                   <div className="running-row">
@@ -729,66 +840,6 @@ function App() {
                 Send
               </Button>
             </form>
-          </ResizablePanel>
-
-          <ResizableHandle withHandle />
-
-          <ResizablePanel defaultSize={30} minSize={24} className="panel activity-panel">
-            <PanelTitle label="Activity" />
-
-            {openRequests.length > 0 ? (
-              <div className="request-stack">
-                {openRequests.map((request) => (
-                  <div key={request.id} className="request-bar">
-                    <div>
-                      <span className="request-title">{request.title ?? request.type}</span>
-                      <span className="request-status">{statusLabel(request.status)}</span>
-                    </div>
-                    <div className="request-actions">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={isResolvingRequestId === request.id}
-                        onClick={() => void resolveRequest(request, 'deny')}
-                      >
-                        Deny
-                      </Button>
-                      <Button
-                        className="primary-action"
-                        size="sm"
-                        disabled={isResolvingRequestId === request.id}
-                        onClick={() => void resolveRequest(request, 'allow')}
-                      >
-                        Allow
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            <Separator className="activity-separator" />
-
-            <ScrollArea className="activity-scroll">
-              <div className="activity-list">
-                {activities.length === 0 ? (
-                  <div className="panel-empty-state">No live activity</div>
-                ) : (
-                  activities.map((item) => (
-                    <div key={item.id} className="activity-item">
-                      <ActivityIcon item={item} />
-                      <div className="activity-copy">
-                        <div className="activity-title-row">
-                          <span>{item.title}</span>
-                          {item.status ? <StatusPill status={item.status} /> : null}
-                        </div>
-                        {item.summary ? <p>{compactText(item.summary, 140)}</p> : null}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </ScrollArea>
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>

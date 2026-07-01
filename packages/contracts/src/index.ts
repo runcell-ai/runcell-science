@@ -86,6 +86,19 @@ export interface AgentMessage {
   updatedAt: string
 }
 
+export interface AgentEvent {
+  id: string
+  sessionId: string
+  turnId: string | null
+  provider: AgentProvider
+  eventType: string
+  streamKind: string | null
+  title: string | null
+  summary: string | null
+  status: string | null
+  createdAt: string
+}
+
 export interface AgentPendingRequest {
   id: string
   sessionId: string
@@ -103,6 +116,7 @@ export interface AgentSessionDetail {
   session: AgentSession
   turns: AgentTurn[]
   messages: AgentMessage[]
+  events: AgentEvent[]
   pendingRequests: AgentPendingRequest[]
 }
 

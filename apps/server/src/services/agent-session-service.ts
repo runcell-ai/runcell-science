@@ -180,13 +180,14 @@ export class AgentSessionService {
   }
 
   recordRuntimeActivity(input: RecordRuntimeActivityInput): void {
-    this.repository.insertAgentEvent(input)
+    const createdAt = nowIso()
+    const eventId = this.repository.insertAgentEvent(input, createdAt)
     sessionEventBus.publish({
-      id: createEventId(),
+      id: eventId,
       type: 'activity',
       sessionId: input.sessionId,
       turnId: input.turnId,
-      createdAt: nowIso(),
+      createdAt,
       eventType: input.eventType,
       title: input.title,
       ...(input.summary !== undefined ? { summary: input.summary } : {}),
