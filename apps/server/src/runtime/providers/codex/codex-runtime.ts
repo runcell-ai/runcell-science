@@ -1,4 +1,5 @@
 import type {
+  AgentDiffFileChange,
   AgentMessage,
   AgentPendingRequest,
   AgentSession,
@@ -22,6 +23,7 @@ import type { ThreadStartResponse } from './generated/v2/ThreadStartResponse'
 import type { ThreadResumeResponse } from './generated/v2/ThreadResumeResponse'
 import type { TurnStartResponse } from './generated/v2/TurnStartResponse'
 import type { ThreadItem } from './generated/v2/ThreadItem'
+import type { FileUpdateChange } from './generated/v2/FileUpdateChange'
 import { CodexJsonRpcClient, type CodexJsonRpcMessage } from './json-rpc-client'
 
 interface CodexTurnBinding {
@@ -281,6 +283,12 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
       case 'turn/completed':
         this.handleTurnCompleted(notification.params, message)
         return
+      case 'turn/diff/updated':
+        this.handleTurnDiffUpdated(notification.params, message)
+        return
+      case 'item/fileChange/patchUpdated':
+        this.handleFileChangePatchUpdated(notification.params, message)
+        return
       case 'item/started':
         this.recordItemActivity('started', notification.params.threadId, notification.params.turnId, notification.params.item, message)
         return
@@ -377,6 +385,47 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
     agentSessionService.completeTurn(binding.sessionId, binding.localTurnId)
   }
 
+  private handleTurnDiffUpdated(
+    params: Extract<ServerNotification, { method: 'turn/diff/updated' }>['params'],
+    rawMessage: CodexJsonRpcMessage
+  ): void {
+    const binding = this.findTurnBinding(params.turnId)
+    if (!binding) {
+      return
+    }
+
+    agentSessionService.recordTurnDiff({
+      sessionId: binding.sessionId,
+      turnId: binding.localTurnId,
+      provider: 'codex',
+      providerTurnId: params.turnId,
+      unifiedDiff: params.diff,
+      rawSource: 'codex.app-server.notification',
+      rawJson: rawMessage
+    })
+  }
+
+  private handleFileChangePatchUpdated(
+    params: Extract<ServerNotification, { method: 'item/fileChange/patchUpdated' }>['params'],
+    rawMessage: CodexJsonRpcMessage
+  ): void {
+    const binding = this.findTurnBinding(params.turnId)
+    if (!binding) {
+      return
+    }
+
+    agentSessionService.recordTurnDiff({
+      sessionId: binding.sessionId,
+      turnId: binding.localTurnId,
+      provider: 'codex',
+      providerTurnId: params.turnId,
+      providerItemId: params.itemId,
+      files: normalizeCodexFileChanges(params.changes),
+      rawSource: 'codex.app-server.notification',
+      rawJson: rawMessage
+    })
+  }
+
   private recordItemActivity(
     status: 'started' | 'completed',
     threadId: string,
@@ -459,6 +508,26 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
       ...process.env,
       ...(config.codexHome ? { CODEX_HOME: config.codexHome } : {})
     }
+  }
+}
+
+function normalizeCodexFileChanges(changes: FileUpdateChange[]): AgentDiffFileChange[] {
+  return changes.map((change) => ({
+    path: change.path,
+    previousPath: change.kind.type === 'update' ? change.kind.move_path : null,
+    kind: normalizeCodexPatchKind(change.kind),
+    diff: change.diff
+  }))
+}
+
+function normalizeCodexPatchKind(kind: FileUpdateChange['kind']): AgentDiffFileChange['kind'] {
+  switch (kind.type) {
+    case 'add':
+      return 'add'
+    case 'delete':
+      return 'delete'
+    case 'update':
+      return 'update'
   }
 }
 

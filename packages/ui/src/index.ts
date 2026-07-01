@@ -27,6 +27,7 @@ export {
 } from './components/ui/tooltip'
 export {
   AgentConversationHeader,
+  AgentDiffView,
   AgentErrorBanner,
   AgentPromptComposer,
   AgentRuntimeConfig,

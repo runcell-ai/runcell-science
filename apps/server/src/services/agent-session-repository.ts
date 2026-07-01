@@ -1,6 +1,9 @@
 import crypto from 'node:crypto'
 
 import type {
+  AgentDiffChangeKind,
+  AgentDiffFileChange,
+  AgentDiffSource,
   AgentEvent,
   AgentMessage,
   AgentMessageRole,
@@ -13,6 +16,7 @@ import type {
   AgentSessionDetail,
   AgentSessionStatus,
   AgentSessionSummary,
+  AgentTurnDiff,
   AgentTurn,
   AgentTurnStatus
 } from '@open-science/contracts'
@@ -85,6 +89,20 @@ interface AgentEventRow {
   raw_json: string | null
   canonical_json: string | null
   created_at: string
+}
+
+interface AgentTurnCheckpointRow {
+  id: string
+  session_id: string
+  turn_id: string
+  provider: AgentProvider
+  cwd: string
+  status: 'baseline' | 'ready' | 'skipped' | 'error'
+  baseline_commit: string | null
+  completed_commit: string | null
+  error: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface CreatePendingAgentSessionInput {
@@ -160,6 +178,38 @@ export interface UpdateProviderTurnInput {
 export interface InterruptRunningTurnResult {
   turn: AgentTurn | null
   detail: AgentSessionDetail | null
+}
+
+export interface UpsertTurnCheckpointBaselineInput {
+  sessionId: string
+  turnId: string
+  provider: AgentProvider
+  cwd: string
+  baselineCommit?: string | null
+  status?: 'baseline' | 'skipped' | 'error'
+  error?: string | null
+}
+
+export interface CompleteTurnCheckpointInput {
+  sessionId: string
+  turnId: string
+  status: 'ready' | 'skipped' | 'error'
+  completedCommit?: string | null
+  error?: string | null
+}
+
+export interface TurnCheckpointProjection {
+  id: string
+  sessionId: string
+  turnId: string
+  provider: AgentProvider
+  cwd: string
+  status: 'baseline' | 'ready' | 'skipped' | 'error'
+  baselineCommit: string | null
+  completedCommit: string | null
+  error: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 export interface AssistantDeltaProjection {
@@ -259,6 +309,22 @@ function mapPendingRequest(row: AgentPendingRequestRow): AgentPendingRequest {
   }
 }
 
+function mapTurnCheckpoint(row: AgentTurnCheckpointRow): TurnCheckpointProjection {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    turnId: row.turn_id,
+    provider: row.provider,
+    cwd: row.cwd,
+    status: row.status,
+    baselineCommit: row.baseline_commit,
+    completedCommit: row.completed_commit,
+    error: row.error,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -286,9 +352,19 @@ function stringField(value: Record<string, unknown> | null, field: string): stri
   return typeof fieldValue === 'string' ? fieldValue : null
 }
 
+function nullableStringField(value: Record<string, unknown> | null, field: string): string | null {
+  const fieldValue = value?.[field]
+  return typeof fieldValue === 'string' ? fieldValue : null
+}
+
 function arrayLengthField(value: Record<string, unknown> | null, field: string): number | null {
   const fieldValue = value?.[field]
   return Array.isArray(fieldValue) ? fieldValue.length : null
+}
+
+function arrayField(value: Record<string, unknown> | null, field: string): unknown[] {
+  const fieldValue = value?.[field]
+  return Array.isArray(fieldValue) ? fieldValue : []
 }
 
 function rawThreadItem(row: AgentEventRow): Record<string, unknown> | null {
@@ -391,6 +467,169 @@ function mapEvent(row: AgentEventRow): AgentEvent | null {
 
 function stringifyJson(value: unknown): string | null {
   return value === undefined ? null : JSON.stringify(value)
+}
+
+function parseDiffChangeKind(value: unknown): AgentDiffChangeKind | null {
+  return value === 'add' || value === 'delete' || value === 'update' ? value : null
+}
+
+function parseDiffSource(value: unknown): AgentDiffSource {
+  return value === 'checkpoint' ? 'checkpoint' : 'provider'
+}
+
+function parseDiffFileChange(value: unknown): AgentDiffFileChange | null {
+  if (!isRecord(value)) {
+    return null
+  }
+
+  const path = stringField(value, 'path')
+  const kind = parseDiffChangeKind(value.kind)
+  const diff = stringField(value, 'diff')
+  if (!path || !kind || diff === null) {
+    return null
+  }
+
+  return {
+    path,
+    previousPath: nullableStringField(value, 'previousPath'),
+    kind,
+    diff
+  }
+}
+
+function mapDiffEvent(row: AgentEventRow): AgentTurnDiff | null {
+  if (!row.turn_id) {
+    return null
+  }
+
+  const canonical = canonicalEvent(row)
+  if (stringField(canonical, 'type') !== 'diff.updated') {
+    return null
+  }
+
+  const files = arrayField(canonical, 'files')
+    .map(parseDiffFileChange)
+    .filter((file): file is AgentDiffFileChange => Boolean(file))
+
+  return {
+    id: `diff_${row.turn_id}`,
+    sessionId: row.session_id,
+    turnId: row.turn_id,
+    provider: row.provider,
+    source: parseDiffSource(canonical?.source),
+    providerTurnId: nullableStringField(canonical, 'providerTurnId'),
+    providerItemId: nullableStringField(canonical, 'providerItemId'),
+    files,
+    unifiedDiff: nullableStringField(canonical, 'unifiedDiff'),
+    createdAt: row.created_at,
+    updatedAt: row.created_at
+  }
+}
+
+interface DiffProjectionState {
+  diff: AgentTurnDiff
+  providerAnonymousFiles: AgentDiffFileChange[]
+  providerItemFiles: Map<string, AgentDiffFileChange[]>
+}
+
+function createDiffProjection(diff: AgentTurnDiff): DiffProjectionState {
+  const state: DiffProjectionState = {
+    diff,
+    providerAnonymousFiles: [],
+    providerItemFiles: new Map()
+  }
+
+  if (diff.source === 'provider') {
+    recordProviderDiffFiles(state, diff)
+    state.diff = {
+      ...diff,
+      files: aggregateProviderDiffFiles(state)
+    }
+  }
+
+  return state
+}
+
+function applyDiffProjection(state: DiffProjectionState, next: AgentTurnDiff): void {
+  if (state.diff.source === 'checkpoint' && next.source === 'provider') {
+    return
+  }
+
+  if (next.source === 'checkpoint') {
+    state.diff = {
+      ...next,
+      createdAt: state.diff.createdAt
+    }
+    state.providerAnonymousFiles = []
+    state.providerItemFiles.clear()
+    return
+  }
+
+  recordProviderDiffFiles(state, next)
+
+  state.diff = {
+    ...state.diff,
+    source: next.source,
+    providerTurnId: next.providerTurnId ?? state.diff.providerTurnId,
+    providerItemId: next.providerItemId ?? state.diff.providerItemId,
+    files: aggregateProviderDiffFiles(state),
+    unifiedDiff: next.unifiedDiff ?? state.diff.unifiedDiff,
+    updatedAt: next.updatedAt
+  }
+}
+
+function recordProviderDiffFiles(state: DiffProjectionState, diff: AgentTurnDiff): void {
+  if (diff.providerItemId) {
+    state.providerItemFiles.delete(diff.providerItemId)
+    state.providerItemFiles.set(diff.providerItemId, diff.files)
+    return
+  }
+
+  state.providerAnonymousFiles = mergeDiffFiles(state.providerAnonymousFiles, diff.files)
+}
+
+function aggregateProviderDiffFiles(state: DiffProjectionState): AgentDiffFileChange[] {
+  let files = state.providerAnonymousFiles
+  for (const itemFiles of state.providerItemFiles.values()) {
+    files = mergeDiffFiles(files, itemFiles)
+  }
+  return files
+}
+
+function mergeDiffFiles(previous: AgentDiffFileChange[], next: AgentDiffFileChange[]): AgentDiffFileChange[] {
+  if (next.length === 0) {
+    return previous
+  }
+
+  const byPath = new Map(previous.map((file) => [diffFileKey(file), file]))
+  for (const file of next) {
+    byPath.set(diffFileKey(file), file)
+  }
+  return [...byPath.values()]
+}
+
+function diffFileKey(file: AgentDiffFileChange): string {
+  return `${file.previousPath ?? ''}\u0000${file.path}`
+}
+
+function mapTurnDiffs(rows: AgentEventRow[]): AgentTurnDiff[] {
+  const byTurnId = new Map<string, DiffProjectionState>()
+
+  for (const row of rows) {
+    const diff = mapDiffEvent(row)
+    if (!diff) {
+      continue
+    }
+
+    const previous = byTurnId.get(diff.turnId)
+    if (previous) {
+      applyDiffProjection(previous, diff)
+    } else {
+      byTurnId.set(diff.turnId, createDiffProjection(diff))
+    }
+  }
+
+  return [...byTurnId.values()].map((state) => state.diff).sort((left, right) => left.createdAt.localeCompare(right.createdAt))
 }
 
 export class AgentSessionRepository {
@@ -596,7 +835,31 @@ export class AgentSessionRepository {
             created_at
           FROM agent_events
           WHERE session_id = ?
-            AND event_type NOT IN ('content.delta', 'stderr')
+            AND event_type NOT IN ('content.delta', 'stderr', 'diff.updated')
+          ORDER BY created_at ASC
+        `
+      )
+      .all(sessionId) as AgentEventRow[]
+
+    const diffRows = db
+      .prepare(
+        `
+          SELECT
+            id,
+            session_id,
+            turn_id,
+            provider,
+            event_type,
+            stream_kind,
+            title,
+            summary,
+            status,
+            raw_json,
+            canonical_json,
+            created_at
+          FROM agent_events
+          WHERE session_id = ?
+            AND event_type = 'diff.updated'
           ORDER BY created_at ASC
         `
       )
@@ -607,6 +870,7 @@ export class AgentSessionRepository {
       turns: turnRows.map(mapTurn),
       messages: messageRows.map(mapMessage),
       events: eventRows.map(mapEvent).filter((event): event is AgentEvent => Boolean(event)),
+      diffs: mapTurnDiffs(diffRows),
       pendingRequests: pendingRequestRows.map(mapPendingRequest)
     }
   }
@@ -679,6 +943,99 @@ export class AgentSessionRepository {
       .get(input.turnId, input.sessionId) as AgentTurnRow | undefined
 
     return row ? mapTurn(row) : null
+  }
+
+  upsertTurnCheckpointBaseline(input: UpsertTurnCheckpointBaselineInput): TurnCheckpointProjection {
+    const timestamp = nowIso()
+    const checkpointId = createId('checkpoint')
+
+    getDb()
+      .prepare(
+        `
+          INSERT INTO agent_turn_checkpoints (
+            id,
+            session_id,
+            turn_id,
+            provider,
+            cwd,
+            status,
+            baseline_commit,
+            completed_commit,
+            error,
+            created_at,
+            updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
+          ON CONFLICT(session_id, turn_id) DO UPDATE SET
+            provider = excluded.provider,
+            cwd = excluded.cwd,
+            status = excluded.status,
+            baseline_commit = excluded.baseline_commit,
+            completed_commit = NULL,
+            error = excluded.error,
+            updated_at = excluded.updated_at
+        `
+      )
+      .run(
+        checkpointId,
+        input.sessionId,
+        input.turnId,
+        input.provider,
+        input.cwd,
+        input.status ?? 'baseline',
+        input.baselineCommit ?? null,
+        input.error ?? null,
+        timestamp,
+        timestamp
+      )
+
+    const checkpoint = this.findTurnCheckpoint(input.sessionId, input.turnId)
+    if (!checkpoint) {
+      throw new Error(`Failed to project checkpoint baseline for turn ${input.turnId}.`)
+    }
+    return checkpoint
+  }
+
+  completeTurnCheckpoint(input: CompleteTurnCheckpointInput): TurnCheckpointProjection | null {
+    const timestamp = nowIso()
+
+    getDb()
+      .prepare(
+        `
+          UPDATE agent_turn_checkpoints
+          SET status = ?,
+              completed_commit = ?,
+              error = ?,
+              updated_at = ?
+          WHERE session_id = ?
+            AND turn_id = ?
+        `
+      )
+      .run(
+        input.status,
+        input.completedCommit ?? null,
+        input.error ?? null,
+        timestamp,
+        input.sessionId,
+        input.turnId
+      )
+
+    return this.findTurnCheckpoint(input.sessionId, input.turnId)
+  }
+
+  findTurnCheckpoint(sessionId: string, turnId: string): TurnCheckpointProjection | null {
+    const row = getDb()
+      .prepare(
+        `
+          SELECT *
+          FROM agent_turn_checkpoints
+          WHERE session_id = ?
+            AND turn_id = ?
+        `
+      )
+      .get(sessionId, turnId) as AgentTurnCheckpointRow | undefined
+
+    return row ? mapTurnCheckpoint(row) : null
   }
 
   createFollowupTurnFromUserMessage(input: CreateFollowupTurnInput): AgentTurn {

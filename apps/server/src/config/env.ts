@@ -10,6 +10,7 @@ export interface ServerConfig {
   host: string
   port: number
   sqlitePath: string
+  checkpointGitDir: string
   logDir: string
   migrationDir: string
   nodeEnv: string
@@ -106,6 +107,8 @@ export const config: ServerConfig = {
   host: process.env.SERVER_HOST ?? '0.0.0.0',
   port: Number.isNaN(rawPort) ? defaultServerPort : rawPort,
   sqlitePath: resolveWorkspacePath(process.env.SQLITE_PATH) ?? path.join(workspaceRoot, 'apps/server/data/open-science.sqlite'),
+  checkpointGitDir:
+    resolveWorkspacePath(process.env.CHECKPOINT_GIT_DIR) ?? path.join(workspaceRoot, 'apps/server/data/checkpoints.git'),
   logDir: resolveWorkspacePath(process.env.LOG_DIR) ?? path.join(workspaceRoot, 'logs/server'),
   migrationDir:
     resolveWorkspacePath(process.env.MIGRATION_DIR) ?? path.join(workspaceRoot, 'apps/server/src/db/migrations'),
@@ -131,4 +134,5 @@ export const config: ServerConfig = {
 export function ensureRuntimeDirs(): void {
   fs.mkdirSync(config.logDir, { recursive: true })
   fs.mkdirSync(path.dirname(config.sqlitePath), { recursive: true })
+  fs.mkdirSync(path.dirname(config.checkpointGitDir), { recursive: true })
 }

@@ -3,6 +3,8 @@ import type {
   AgentProvider,
   AgentRuntimeMode,
   ApiErrorResponse,
+  AgentSessionWorktreeDiffResponse,
+  AgentSessionWorktreeDiffStatusResponse,
   CreateAgentTurnRequest,
   CreateAgentTurnResponse,
   CreateAgentSessionRequest,
@@ -16,6 +18,7 @@ import type {
 
 import { RuntimeProviderError, runtimeRegistry, sessionEventBus } from '../../runtime'
 import { AgentSessionServiceError, agentSessionService } from '../../services'
+import { currentWorktreeDiff, isGitRepository } from '../../services/git-worktree-diff-service'
 
 const agentProviders: AgentProvider[] = ['codex', 'claude']
 const runtimeModes: AgentRuntimeMode[] = ['full_access', 'default']
@@ -205,6 +208,10 @@ export const sessionsRoute: FastifyPluginAsync = async (server) => {
     }
 
     try {
+      agentSessionService.captureTurnCheckpointBaseline({
+        session: response.detail.session,
+        turn: initialTurn
+      })
       await runtimeRegistry.startInitialTurn({
         session: response.detail.session,
         turn: initialTurn,
@@ -236,6 +243,51 @@ export const sessionsRoute: FastifyPluginAsync = async (server) => {
     return reply.send(detail)
   })
 
+  server.get('/api/sessions/:sessionId/worktree-diff/status', async (request, reply) => {
+    const params = request.params as { sessionId?: string }
+    if (!isNonEmptyString(params.sessionId)) {
+      return sendBadRequest(reply, 'sessionId is required.')
+    }
+
+    const detail = agentSessionService.getSessionDetail(params.sessionId)
+    if (!detail) {
+      return reply.code(404).send({
+        error: {
+          code: 'not_found',
+          message: 'Session was not found.'
+        }
+      } satisfies ApiErrorResponse)
+    }
+
+    return reply.send({
+      isGitRepository: await isGitRepository(detail.session.cwd)
+    } satisfies AgentSessionWorktreeDiffStatusResponse)
+  })
+
+  server.get('/api/sessions/:sessionId/worktree-diff', async (request, reply) => {
+    const params = request.params as { sessionId?: string }
+    if (!isNonEmptyString(params.sessionId)) {
+      return sendBadRequest(reply, 'sessionId is required.')
+    }
+
+    const detail = agentSessionService.getSessionDetail(params.sessionId)
+    if (!detail) {
+      return reply.code(404).send({
+        error: {
+          code: 'not_found',
+          message: 'Session was not found.'
+        }
+      } satisfies ApiErrorResponse)
+    }
+
+    const isRepository = await isGitRepository(detail.session.cwd)
+    return reply.send({
+      isGitRepository: isRepository,
+      unifiedDiff: isRepository ? await currentWorktreeDiff(detail.session.cwd) : null,
+      generatedAt: isRepository ? new Date().toISOString() : null
+    } satisfies AgentSessionWorktreeDiffResponse)
+  })
+
   server.post('/api/sessions/:sessionId/turns', async (request, reply) => {
     const params = request.params as { sessionId?: string }
     if (!isNonEmptyString(params.sessionId)) {
@@ -257,6 +309,11 @@ export const sessionsRoute: FastifyPluginAsync = async (server) => {
       if (!detail || !userMessage) {
         throw new AgentSessionServiceError('not_found', 'Session turn projection was not found.', 404)
       }
+
+      agentSessionService.captureTurnCheckpointBaseline({
+        session: detail.session,
+        turn
+      })
 
       await runtimeRegistry.startTurn({
         session: detail.session,

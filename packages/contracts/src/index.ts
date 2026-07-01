@@ -34,6 +34,30 @@ export type AgentMessageStatus = 'pending' | 'streaming' | 'completed' | 'failed
 
 export type AgentPendingRequestStatus = 'open' | 'resolved'
 
+export type AgentDiffChangeKind = 'add' | 'delete' | 'update'
+export type AgentDiffSource = 'provider' | 'checkpoint'
+
+export interface AgentDiffFileChange {
+  path: string
+  previousPath: string | null
+  kind: AgentDiffChangeKind
+  diff: string
+}
+
+export interface AgentTurnDiff {
+  id: string
+  sessionId: string
+  turnId: string
+  provider: AgentProvider
+  source: AgentDiffSource
+  providerTurnId: string | null
+  providerItemId: string | null
+  files: AgentDiffFileChange[]
+  unifiedDiff: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface AgentSession {
   id: string
   provider: AgentProvider
@@ -117,7 +141,18 @@ export interface AgentSessionDetail {
   turns: AgentTurn[]
   messages: AgentMessage[]
   events: AgentEvent[]
+  diffs?: AgentTurnDiff[]
   pendingRequests: AgentPendingRequest[]
+}
+
+export interface AgentSessionWorktreeDiffStatusResponse {
+  isGitRepository: boolean
+}
+
+export interface AgentSessionWorktreeDiffResponse {
+  isGitRepository: boolean
+  unifiedDiff: string | null
+  generatedAt: string | null
 }
 
 export interface ListAgentSessionsResponse {
@@ -195,6 +230,10 @@ export type RuntimeSseEvent =
       title: string
       summary?: string
       status?: string
+    })
+  | (RuntimeSseEventBase & {
+      type: 'diff.updated'
+      diff: AgentTurnDiff
     })
   | (RuntimeSseEventBase & {
       type: 'runtime.error'

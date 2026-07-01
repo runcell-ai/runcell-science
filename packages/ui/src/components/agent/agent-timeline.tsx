@@ -1,7 +1,8 @@
-import { Loader2 } from 'lucide-react'
+import { FileDiff, Loader2 } from 'lucide-react'
 
 import { Button } from '../ui/button'
 import { ScrollArea } from '../ui/scroll-area'
+import { AgentDiffView } from './agent-diff-view'
 import { AgentActivityIcon, AgentMessageIcon } from './agent-icons'
 import type { AgentRequestDecision, AgentTimelineItem } from './types'
 import {
@@ -48,6 +49,10 @@ function AgentTimeline({
                   onResolveRequest={onResolveRequest}
                 />
               )
+            }
+
+            if (item.type === 'diff') {
+              return <AgentDiffRow key={item.id} item={item} />
             }
 
             return <AgentToolCallRow key={item.id} item={item} />
@@ -129,6 +134,21 @@ function AgentRequestRow({
           </div>
         ) : null}
       </div>
+    </article>
+  )
+}
+
+function AgentDiffRow({
+  item
+}: {
+  item: Extract<AgentTimelineItem, { type: 'diff' }>
+}) {
+  return (
+    <article className="timeline-row diff-row">
+      <div className="activity-marker">
+        <FileDiff className="activity-icon diff-activity-icon" />
+      </div>
+      <AgentDiffView diff={item.diff} />
     </article>
   )
 }

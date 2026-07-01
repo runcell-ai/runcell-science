@@ -1,6 +1,8 @@
 import crypto from 'node:crypto'
 
 import type {
+  AgentDiffFileChange,
+  AgentDiffSource,
   AgentMessage,
   AgentPendingRequest,
   AgentProvider,
@@ -8,6 +10,7 @@ import type {
   AgentSession,
   AgentSessionDetail,
   AgentSessionSummary,
+  AgentTurnDiff,
   AgentTurn,
   CreateAgentSessionResponse
 } from '@open-science/contracts'
@@ -20,6 +23,7 @@ import {
   type CreatePendingRequestInput,
   type PersistAgentEventInput
 } from './agent-session-repository'
+import { safeTurnCheckpointService } from './safe-turn-checkpoint-service'
 
 export interface CreateAgentSessionDraftInput {
   provider: AgentProvider
@@ -61,6 +65,24 @@ export interface RecordRuntimeActivityInput extends PersistAgentEventInput {
   title: string
   summary?: string
   status?: string
+}
+
+export interface RecordTurnDiffInput {
+  sessionId: string
+  turnId: string
+  provider: AgentProvider
+  source?: AgentDiffSource
+  providerTurnId?: string | null
+  providerItemId?: string | null
+  files?: AgentDiffFileChange[]
+  unifiedDiff?: string | null
+  rawSource?: string | null
+  rawJson?: unknown
+}
+
+export interface CaptureTurnCheckpointBaselineInput {
+  session: AgentSession
+  turn: AgentTurn
 }
 
 const defaultPendingActivationTtlMs = 24 * 60 * 60 * 1000
@@ -179,6 +201,36 @@ export class AgentSessionService {
     return turn
   }
 
+  captureTurnCheckpointBaseline(input: CaptureTurnCheckpointBaselineInput): void {
+    try {
+      const result = safeTurnCheckpointService.captureSnapshot({
+        sessionId: input.session.id,
+        turnId: input.turn.id,
+        cwd: input.session.cwd,
+        phase: 'baseline'
+      })
+
+      this.repository.upsertTurnCheckpointBaseline({
+        sessionId: input.session.id,
+        turnId: input.turn.id,
+        provider: input.session.provider,
+        cwd: input.session.cwd,
+        status: result.status === 'captured' ? 'baseline' : 'skipped',
+        baselineCommit: result.status === 'captured' ? result.commit : null,
+        error: result.status === 'skipped' ? result.reason : null
+      })
+    } catch (error) {
+      this.repository.upsertTurnCheckpointBaseline({
+        sessionId: input.session.id,
+        turnId: input.turn.id,
+        provider: input.session.provider,
+        cwd: input.session.cwd,
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+  }
+
   recordRuntimeActivity(input: RecordRuntimeActivityInput): void {
     const createdAt = nowIso()
     const eventId = this.repository.insertAgentEvent(input, createdAt)
@@ -193,6 +245,53 @@ export class AgentSessionService {
       ...(input.summary !== undefined ? { summary: input.summary } : {}),
       ...(input.status !== undefined ? { status: input.status } : {})
     })
+  }
+
+  recordTurnDiff(input: RecordTurnDiffInput): AgentTurnDiff {
+    const createdAt = nowIso()
+
+    this.repository.insertAgentEvent(
+      {
+        sessionId: input.sessionId,
+        turnId: input.turnId,
+        provider: input.provider,
+        eventType: 'diff.updated',
+        streamKind: 'diff',
+        title: 'File changes',
+        summary: diffSummary(input.files ?? [], input.unifiedDiff ?? null),
+        status: 'updated',
+        rawSource: input.rawSource ?? null,
+        rawJson: input.rawJson,
+        canonicalJson: {
+          type: 'diff.updated',
+          source: input.source ?? 'provider',
+          providerTurnId: input.providerTurnId ?? null,
+          providerItemId: input.providerItemId ?? null,
+          files: input.files ?? [],
+          unifiedDiff: input.unifiedDiff ?? null
+        }
+      },
+      createdAt
+    )
+
+    const diff = this.repository
+      .findSessionDetail(input.sessionId)
+      ?.diffs?.find((entry) => entry.turnId === input.turnId)
+
+    if (!diff) {
+      throw new AgentSessionServiceError('not_found', 'Turn diff projection was not found.', 404)
+    }
+
+    sessionEventBus.publish({
+      id: createEventId(),
+      type: 'diff.updated',
+      sessionId: diff.sessionId,
+      turnId: diff.turnId,
+      createdAt,
+      diff
+    })
+
+    return diff
   }
 
   completeTurn(sessionId: string, turnId: string): AgentSessionDetail {
@@ -213,6 +312,9 @@ export class AgentSessionService {
     if (assistantMessage) {
       this.publishMessageEvent('message.completed', assistantMessage)
     }
+    if (turn) {
+      this.finalizeTurnCheckpoint(detail.session, turn)
+    }
 
     return detail
   }
@@ -227,6 +329,7 @@ export class AgentSessionService {
     this.publishSessionUpdated(detail.session)
     if (turn) {
       this.publishTurnEvent('turn.failed', turn)
+      this.finalizeTurnCheckpoint(detail.session, turn)
     }
     sessionEventBus.publish({
       id: createEventId(),
@@ -287,6 +390,7 @@ export class AgentSessionService {
 
     this.publishSessionUpdated(result.detail.session)
     this.publishTurnEvent('turn.interrupted', result.turn)
+    this.finalizeTurnCheckpoint(result.detail.session, result.turn)
 
     return {
       interrupted: true,
@@ -313,6 +417,72 @@ export class AgentSessionService {
       createdAt: nowIso(),
       session
     })
+  }
+
+  private finalizeTurnCheckpoint(session: AgentSession, turn: AgentTurn): void {
+    try {
+      const baseline = this.repository.findTurnCheckpoint(session.id, turn.id)
+      if (!baseline?.baselineCommit || baseline.status === 'skipped') {
+        return
+      }
+
+      const completed = safeTurnCheckpointService.captureSnapshot({
+        sessionId: session.id,
+        turnId: turn.id,
+        cwd: session.cwd,
+        phase: 'completed'
+      })
+
+      if (completed.status === 'skipped') {
+        this.repository.completeTurnCheckpoint({
+          sessionId: session.id,
+          turnId: turn.id,
+          status: 'skipped',
+          error: completed.reason
+        })
+        return
+      }
+
+      this.repository.completeTurnCheckpoint({
+        sessionId: session.id,
+        turnId: turn.id,
+        status: 'ready',
+        completedCommit: completed.commit
+      })
+
+      const existingDiff = this.repository.findSessionDetail(session.id)?.diffs?.find((diff) => diff.turnId === turn.id)
+      if (hasDiffContent(existingDiff)) {
+        return
+      }
+
+      const unifiedDiff = safeTurnCheckpointService.diffSnapshots(baseline.baselineCommit, completed.commit)
+      if (!unifiedDiff?.trim()) {
+        return
+      }
+
+      this.recordTurnDiff({
+        sessionId: session.id,
+        turnId: turn.id,
+        provider: session.provider,
+        source: 'checkpoint',
+        providerTurnId: turn.providerTurnId,
+        files: [],
+        unifiedDiff,
+        rawSource: 'open-science.checkpoint',
+        rawJson: {
+          baselineCommit: baseline.baselineCommit,
+          completedCommit: completed.commit,
+          cwd: session.cwd
+        }
+      })
+    } catch (error) {
+      this.repository.completeTurnCheckpoint({
+        sessionId: session.id,
+        turnId: turn.id,
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
   }
 
   private publishTurnEvent(
@@ -344,6 +514,23 @@ export class AgentSessionService {
       ...(delta !== undefined ? { delta } : {})
     })
   }
+
+}
+
+function hasDiffContent(diff: AgentTurnDiff | undefined): boolean {
+  return Boolean(diff && (diff.files.length > 0 || diff.unifiedDiff?.trim()))
+}
+
+function diffSummary(files: AgentDiffFileChange[], unifiedDiff: string | null): string {
+  if (files.length > 0) {
+    return `${files.length} changed file${files.length === 1 ? '' : 's'}`
+  }
+
+  if (unifiedDiff?.trim()) {
+    return 'Unified diff updated'
+  }
+
+  return 'Diff updated'
 }
 
 export const agentSessionService = new AgentSessionService()

@@ -1,4 +1,5 @@
 import type {
+  AgentTurnDiff,
   AgentEvent,
   AgentMessage,
   AgentPendingRequest,
@@ -25,6 +26,10 @@ export type AgentTimelineItem = {
   | {
       type: 'activity'
       event: AgentEvent
+    }
+  | {
+      type: 'diff'
+      diff: AgentTurnDiff
     }
   | {
       type: 'request'

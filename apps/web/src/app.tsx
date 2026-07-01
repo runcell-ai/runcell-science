@@ -6,6 +6,9 @@ import type {
   AgentSession,
   AgentSessionDetail,
   AgentSessionSummary,
+  AgentSessionWorktreeDiffResponse,
+  AgentSessionWorktreeDiffStatusResponse,
+  AgentTurnDiff,
   AgentTurn,
   CreateAgentSessionResponse,
   CreateAgentTurnResponse,
@@ -16,6 +19,7 @@ import type {
 } from '@open-science/contracts'
 import {
   AgentConversationHeader,
+  AgentDiffView,
   AgentErrorBanner,
   AgentPromptComposer,
   AgentRuntimeConfig,
@@ -24,6 +28,11 @@ import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
   TooltipProvider,
   displaySessionTitle,
   providerLabel
@@ -32,6 +41,7 @@ import type { AgentProviderOption, AgentTimelineItem } from '@open-science/ui'
 import './app.css'
 
 type RuntimeActivityEvent = Extract<RuntimeSseEvent, { type: 'activity' }>
+type WorktreeDiffStatus = 'unknown' | 'checking' | 'available' | 'unavailable'
 
 const apiBaseUrl = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '').replace(/\/$/, '')
 const envDefaultCwd = (import.meta.env.VITE_AGENT_DEFAULT_CWD as string | undefined) ?? ''
@@ -54,6 +64,7 @@ const runtimeEventTypes: RuntimeSseEvent['type'][] = [
   'request.opened',
   'request.resolved',
   'activity',
+  'diff.updated',
   'runtime.error'
 ]
 
@@ -66,6 +77,7 @@ const hiddenActivityEventTypes = new Set([
   'thread/status/changed',
   'thread/tokenUsage/updated',
   'turn/started',
+  'diff.updated',
   'claude.rate_limit_event',
   'claude.stream.content_block_delta',
   'claude.stream.message_delta',
@@ -126,6 +138,10 @@ function byCreatedAt<T extends { createdAt: string }>(items: T[]): T[] {
 
 function byRequestedAt(items: AgentTurn[]): AgentTurn[] {
   return [...items].sort((left, right) => left.requestedAt.localeCompare(right.requestedAt))
+}
+
+function byDiffUpdatedAt(items: AgentTurnDiff[]): AgentTurnDiff[] {
+  return [...items].sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))
 }
 
 function upsertById<T extends { id: string }>(items: T[], next: T): T[] {
@@ -235,6 +251,11 @@ function applyRuntimeEvent(detail: AgentSessionDetail | null, event: RuntimeSseE
         events: byCreatedAt(upsertById(detail.events, activityEvent))
       }
     }
+    case 'diff.updated':
+      return {
+        ...detail,
+        diffs: byDiffUpdatedAt(upsertById(detail.diffs ?? [], event.diff))
+      }
     default:
       return detail
   }
@@ -262,6 +283,9 @@ function timelineItemRank(item: AgentTimelineItem): number {
     }
     return 1
   }
+  if (item.type === 'diff') {
+    return 3
+  }
   return 3
 }
 
@@ -282,6 +306,12 @@ function buildTimelineItems(detail: AgentSessionDetail | null): AgentTimelineIte
       type: 'activity' as const,
       createdAt: event.createdAt,
       event
+    })),
+    ...(detail.diffs ?? []).map((diff) => ({
+      id: diff.id,
+      type: 'diff' as const,
+      createdAt: diff.updatedAt,
+      diff
     })),
     ...detail.pendingRequests.map((request) => ({
       id: request.id,
@@ -315,6 +345,10 @@ function App() {
   const [cwd, setCwd] = useState(readStoredCwd)
   const [messageDraft, setMessageDraft] = useState('')
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connecting' | 'live' | 'error'>('idle')
+  const [worktreeDiffStatus, setWorktreeDiffStatus] = useState<WorktreeDiffStatus>('unknown')
+  const [worktreeDiffOpen, setWorktreeDiffOpen] = useState(false)
+  const [worktreeDiff, setWorktreeDiff] = useState<AgentSessionWorktreeDiffResponse | null>(null)
+  const [isLoadingWorktreeDiff, setIsLoadingWorktreeDiff] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [isResolvingRequestId, setIsResolvingRequestId] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -331,15 +365,27 @@ function App() {
   const openSession = useCallback(async (sessionId: string) => {
     setErrorMessage(null)
     setConnectionStatus('connecting')
+    setWorktreeDiffStatus('checking')
+    setWorktreeDiffOpen(false)
+    setWorktreeDiff(null)
     setActiveSessionId(sessionId)
-    const detail = await requestJson<AgentSessionDetail>(`/api/sessions/${sessionId}`)
+    const [detail, diffStatus] = await Promise.all([
+      requestJson<AgentSessionDetail>(`/api/sessions/${sessionId}`),
+      requestJson<AgentSessionWorktreeDiffStatusResponse>(`/api/sessions/${sessionId}/worktree-diff/status`).catch(
+        () => ({ isGitRepository: false })
+      )
+    ])
     setActiveDetail(detail)
+    setWorktreeDiffStatus(diffStatus.isGitRepository ? 'available' : 'unavailable')
   }, [])
 
   const startDraft = useCallback(() => {
     setActiveSessionId(null)
     setActiveDetail(null)
     setConnectionStatus('idle')
+    setWorktreeDiffStatus('unknown')
+    setWorktreeDiffOpen(false)
+    setWorktreeDiff(null)
     setErrorMessage(null)
     setMessageDraft('')
   }, [])
@@ -412,6 +458,11 @@ function App() {
         setMessageDraft('')
         setActiveDetail(response.detail)
         setActiveSessionId(response.sessionId)
+        setWorktreeDiffStatus('checking')
+        const diffStatus = await requestJson<AgentSessionWorktreeDiffStatusResponse>(
+          `/api/sessions/${response.sessionId}/worktree-diff/status`
+        ).catch(() => ({ isGitRepository: false }))
+        setWorktreeDiffStatus(diffStatus.isGitRepository ? 'available' : 'unavailable')
       } else if (activeSessionId) {
         await requestJson<CreateAgentTurnResponse>(`/api/sessions/${activeSessionId}/turns`, {
           method: 'POST',
@@ -427,6 +478,32 @@ function App() {
       setIsSending(false)
     }
   }, [activeSessionId, cwd, isDraft, isSending, messageDraft, provider, running])
+
+  const openWorktreeDiff = useCallback(async () => {
+    if (!activeSessionId || worktreeDiffStatus !== 'available') {
+      return
+    }
+
+    setErrorMessage(null)
+    setWorktreeDiffOpen(true)
+    setIsLoadingWorktreeDiff(true)
+    try {
+      const response = await requestJson<AgentSessionWorktreeDiffResponse>(
+        `/api/sessions/${activeSessionId}/worktree-diff`
+      )
+      if (!response.isGitRepository) {
+        setWorktreeDiffStatus('unavailable')
+        setWorktreeDiff(null)
+        setWorktreeDiffOpen(false)
+        return
+      }
+      setWorktreeDiff(response)
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error))
+    } finally {
+      setIsLoadingWorktreeDiff(false)
+    }
+  }, [activeSessionId, worktreeDiffStatus])
 
   const interruptSession = useCallback(async () => {
     if (!activeSessionId || !running) {
@@ -497,6 +574,9 @@ function App() {
               status={activeDetail ? activeDetail.session.status : 'draft'}
               connectionStatus={activeSessionId ? connectionStatus : null}
               running={running}
+              showDiffButton={worktreeDiffStatus === 'available'}
+              diffButtonDisabled={isLoadingWorktreeDiff}
+              onOpenDiff={() => void openWorktreeDiff()}
               onInterrupt={() => void interruptSession()}
             />
 
@@ -528,6 +608,24 @@ function App() {
               onValueChange={setMessageDraft}
               onSubmit={() => void sendMessage()}
             />
+
+            <Sheet open={worktreeDiffOpen} onOpenChange={setWorktreeDiffOpen}>
+              <SheetContent className="worktree-diff-sheet">
+                <SheetHeader>
+                  <SheetTitle>Project diff</SheetTitle>
+                  <SheetDescription>{activeDetail?.session.cwd ?? cwd}</SheetDescription>
+                </SheetHeader>
+                <div className="worktree-diff-body">
+                  {isLoadingWorktreeDiff ? (
+                    <div className="diff-empty">Loading diff</div>
+                  ) : worktreeDiff?.unifiedDiff?.trim() ? (
+                    <AgentDiffView title="Project changes" diff={{ files: [], unifiedDiff: worktreeDiff.unifiedDiff }} />
+                  ) : (
+                    <div className="diff-empty">No diff content</div>
+                  )}
+                </div>
+              </SheetContent>
+            </Sheet>
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>

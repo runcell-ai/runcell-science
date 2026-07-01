@@ -182,6 +182,7 @@
 .message-heading,
 .activity-title-row,
 .session-meta,
+.conversation-actions,
 .panel-actions,
 .request-actions,
 .conversation-meta {
@@ -198,6 +199,7 @@
 }
 
 .panel-actions,
+.conversation-actions,
 .request-actions,
 .conversation-meta,
 .session-meta {
@@ -281,6 +283,10 @@
 
 .conversation-title-group {
   min-width: 0;
+}
+
+.conversation-actions {
+  flex: 0 0 auto;
 }
 
 .conversation-title {
@@ -627,6 +633,154 @@
   line-height: 1.4;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.diff-card {
+  min-width: 0;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.diff-card-header {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #e4e7ec;
+  padding: 9px 10px;
+  background: #f9fafb;
+}
+
+.diff-card-title {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #101828;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.diff-card-title svg,
+.diff-activity-icon,
+.diff-kind-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.diff-activity-icon {
+  color: #475467;
+}
+
+.diff-count {
+  flex: 0 0 auto;
+  color: #667085;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.diff-file-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.diff-file + .diff-file {
+  border-top: 1px solid #e4e7ec;
+}
+
+.diff-file-summary {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  color: #344054;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.35;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.diff-file-summary::-webkit-details-marker {
+  display: none;
+}
+
+.diff-file-summary::before {
+  content: ">";
+  width: 12px;
+  color: #667085;
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 17px;
+  line-height: 1;
+  transition: transform 120ms ease;
+}
+
+.diff-file[open] > .diff-file-summary::before {
+  transform: rotate(90deg);
+}
+
+.diff-kind-added {
+  color: #047857;
+}
+
+.diff-kind-deleted {
+  color: #b42318;
+}
+
+.diff-kind-modified {
+  color: #1d4ed8;
+}
+
+.diff-patch {
+  max-height: min(520px, 70vh);
+  overflow: auto;
+  border-top: 1px solid #e4e7ec;
+  background: #ffffff;
+}
+
+.diff-patch diffs-container {
+  display: block;
+  min-width: 720px;
+}
+
+.diff-raw,
+.diff-empty {
+  margin: 0;
+  padding: 10px;
+  color: #344054;
+  background: #f9fafb;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.diff-raw {
+  max-height: min(420px, 60vh);
+  overflow: auto;
+  white-space: pre;
+}
+
+.worktree-diff-sheet {
+  width: min(1180px, calc(100vw - 48px));
+  max-width: none;
+  gap: 0;
+}
+
+.worktree-diff-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 16px 16px;
+}
+
+.worktree-diff-body .diff-card {
+  min-height: 100%;
 }
 
 @keyframes spin {

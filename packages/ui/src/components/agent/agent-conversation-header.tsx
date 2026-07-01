@@ -1,4 +1,4 @@
-import { CircleDot, Square } from 'lucide-react'
+import { CircleDot, FileDiff, Square } from 'lucide-react'
 
 import { Button } from '../ui/button'
 import {
@@ -16,6 +16,9 @@ type AgentConversationHeaderProps = {
   status: string
   connectionStatus: AgentConnectionStatus | null
   running: boolean
+  showDiffButton?: boolean
+  diffButtonDisabled?: boolean
+  onOpenDiff?: () => void
   onInterrupt: () => void
 }
 
@@ -25,6 +28,9 @@ function AgentConversationHeader({
   status,
   connectionStatus,
   running,
+  showDiffButton = false,
+  diffButtonDisabled = false,
+  onOpenDiff,
   onInterrupt
 }: AgentConversationHeaderProps) {
   return (
@@ -45,22 +51,43 @@ function AgentConversationHeader({
         </div>
       </div>
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              onClick={onInterrupt}
-              disabled={!running}
-            >
-              <Square />
-              <span className="sr-only">Interrupt turn</span>
-            </Button>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>Interrupt turn</TooltipContent>
-      </Tooltip>
+      <div className="conversation-actions">
+        {showDiffButton ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  onClick={onOpenDiff}
+                  disabled={diffButtonDisabled || !onOpenDiff}
+                >
+                  <FileDiff />
+                  <span className="sr-only">Open project diff</span>
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>Open project diff</TooltipContent>
+          </Tooltip>
+        ) : null}
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                onClick={onInterrupt}
+                disabled={!running}
+              >
+                <Square />
+                <span className="sr-only">Interrupt turn</span>
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>Interrupt turn</TooltipContent>
+        </Tooltip>
+      </div>
     </div>
   )
 }
