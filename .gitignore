@@ -94,4 +94,12 @@ ENV/
 .vscode/
 
 # Internal local context
+.last-cleanup
 internal_docs/AGENTS.md
+backups/
+mcp-needs-auth-cache.json
+projects/
+sessions/
+session-env/
+sessions-env/
+shell-snapshots/

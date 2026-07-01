@@ -1,11 +1,4 @@
-@import 'tailwindcss';
-
-:root {
-  --background: #f8fafc;
-  --foreground: #111827;
-  --surface: #ffffff;
-  --border: #d0d5dd;
-}
+@import '@open-science/ui/styles.css';
 
 * {
   box-sizing: border-box;
@@ -20,9 +13,6 @@ body {
   margin: 0;
   min-width: 320px;
   overflow: hidden;
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
 }
 
 #root {

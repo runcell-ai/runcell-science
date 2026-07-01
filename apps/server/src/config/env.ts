@@ -35,7 +35,8 @@ dotenv.config({ path: path.join(workspaceRoot, '.env'), quiet: true })
 dotenv.config({ path: path.join(serverRoot, '.env'), quiet: true })
 
 const logLevels: ServerConfig['logLevel'][] = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']
-const rawPort = Number(process.env.SERVER_PORT ?? process.env.PORT ?? 4000)
+const defaultServerPort = 27184
+const rawPort = Number(process.env.SERVER_PORT ?? process.env.PORT ?? defaultServerPort)
 
 function resolveWorkspacePath(value: string | undefined) {
   if (!value) {
@@ -103,7 +104,7 @@ function resolveBoolean(value: string | undefined, defaultValue: boolean): boole
 
 export const config: ServerConfig = {
   host: process.env.SERVER_HOST ?? '0.0.0.0',
-  port: Number.isNaN(rawPort) ? 4000 : rawPort,
+  port: Number.isNaN(rawPort) ? defaultServerPort : rawPort,
   sqlitePath: resolveWorkspacePath(process.env.SQLITE_PATH) ?? path.join(workspaceRoot, 'apps/server/data/open-science.sqlite'),
   logDir: resolveWorkspacePath(process.env.LOG_DIR) ?? path.join(workspaceRoot, 'logs/server'),
   migrationDir:

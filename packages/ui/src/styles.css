@@ -1,29 +1,172 @@
-.app-shell {
-  width: 100%;
-  height: 100vh;
-  min-height: 0;
-  display: flex;
-  padding: 12px;
-  box-sizing: border-box;
-  overflow: hidden;
+@import 'tailwindcss';
+
+@source './components';
+@source './gallery';
+
+@custom-variant dark (&:where(.dark, .dark *));
+@custom-variant data-open (&:where([data-state='open']));
+@custom-variant data-closed (&:where([data-state='closed']));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-destructive: var(--destructive);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
 }
 
-.shell-grid {
-  height: calc(100vh - 24px);
-  min-height: calc(100vh - 24px);
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  overflow: hidden;
+:root {
+  color-scheme: light;
+  --background: #f8fafc;
+  --foreground: #111827;
+  --surface: #ffffff;
+  --border: #d0d5dd;
+  --input: #d0d5dd;
+  --ring: #2563eb;
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --secondary: #eef2f6;
+  --secondary-foreground: #344054;
+  --muted: #f2f4f7;
+  --muted-foreground: #667085;
+  --popover: #ffffff;
+  --popover-foreground: #101828;
+  --destructive: #dc2626;
+  --radius-md: 8px;
+  --radius-lg: 8px;
 }
 
-.panel {
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  min-width: 0;
-  overflow: hidden;
+.dark {
+  color-scheme: dark;
+  --background: #101828;
+  --foreground: #f9fafb;
+  --surface: #182230;
+  --border: #344054;
+  --input: #475467;
+  --ring: #84caff;
+  --primary: #84caff;
+  --primary-foreground: #101828;
+  --secondary: #263344;
+  --secondary-foreground: #f2f4f7;
+  --muted: #1d2939;
+  --muted-foreground: #98a2b3;
+  --popover: #182230;
+  --popover-foreground: #f9fafb;
+  --destructive: #f97066;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family:
+      Inter,
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      sans-serif;
+  }
+}
+
+@utility animate-in {
+  --ui-enter-opacity: 1;
+  --ui-enter-scale: 1;
+  --ui-enter-translate-x: 0;
+  --ui-enter-translate-y: 0;
+  animation: ui-enter 160ms ease-out;
+}
+
+@utility animate-out {
+  --ui-exit-opacity: 1;
+  --ui-exit-scale: 1;
+  --ui-exit-translate-x: 0;
+  --ui-exit-translate-y: 0;
+  animation: ui-exit 120ms ease-in;
+}
+
+@utility fade-in-0 {
+  --ui-enter-opacity: 0;
+}
+
+@utility fade-out-0 {
+  --ui-exit-opacity: 0;
+}
+
+@utility zoom-in-95 {
+  --ui-enter-scale: 0.95;
+}
+
+@utility zoom-out-95 {
+  --ui-exit-scale: 0.95;
+}
+
+@utility slide-in-from-top-2 {
+  --ui-enter-translate-y: -0.5rem;
+}
+
+@utility slide-in-from-bottom-2 {
+  --ui-enter-translate-y: 0.5rem;
+}
+
+@utility slide-in-from-left-10 {
+  --ui-enter-translate-x: -2.5rem;
+}
+
+@utility slide-in-from-right-2 {
+  --ui-enter-translate-x: 0.5rem;
+}
+
+@utility slide-in-from-right-10 {
+  --ui-enter-translate-x: 2.5rem;
+}
+
+@utility slide-out-to-top-10 {
+  --ui-exit-translate-y: -2.5rem;
+}
+
+@utility slide-out-to-bottom-10 {
+  --ui-exit-translate-y: 2.5rem;
+}
+
+@utility slide-out-to-left-10 {
+  --ui-exit-translate-x: -2.5rem;
+}
+
+@utility slide-out-to-right-10 {
+  --ui-exit-translate-x: 2.5rem;
+}
+
+@keyframes ui-enter {
+  from {
+    opacity: var(--ui-enter-opacity);
+    transform: translate3d(var(--ui-enter-translate-x), var(--ui-enter-translate-y), 0)
+      scale(var(--ui-enter-scale));
+  }
+}
+
+@keyframes ui-exit {
+  to {
+    opacity: var(--ui-exit-opacity);
+    transform: translate3d(var(--ui-exit-translate-x), var(--ui-exit-translate-y), 0)
+      scale(var(--ui-exit-scale));
+  }
 }
 
 .panel-title {
@@ -493,22 +636,6 @@
 }
 
 @media (max-width: 960px) {
-  .app-shell {
-    padding: 0;
-  }
-
-  .shell-grid {
-    height: 100vh;
-    min-height: 100vh;
-    border-radius: 0;
-    border-left: 0;
-    border-right: 0;
-  }
-
-  .panel {
-    padding: 12px;
-  }
-
   .runtime-config {
     grid-template-columns: 1fr;
   }

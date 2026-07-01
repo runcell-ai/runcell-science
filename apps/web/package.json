@@ -12,19 +12,10 @@
   },
   "dependencies": {
     "@open-science/contracts": "workspace:*",
-    "@radix-ui/react-context-menu": "^2.1.5",
-    "@radix-ui/react-dialog": "^1.1.12",
-    "@radix-ui/react-scroll-area": "^1.2.4",
-    "@radix-ui/react-separator": "^1.1.2",
-    "@radix-ui/react-slot": "^1.1.0",
-    "@radix-ui/react-tooltip": "^1.2.0",
-    "class-variance-authority": "^0.7.0",
-    "clsx": "^2.1.1",
+    "@open-science/ui": "workspace:*",
     "lucide-react": "^0.520.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7",
-    "react-resizable-panels": "^2.1.7",
-    "tailwind-merge": "^3.3.1"
+    "react-dom": "^19.2.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",

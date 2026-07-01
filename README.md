@@ -33,6 +33,35 @@ corepack enable
 
 ## 安装与启动
 
+### 一键开发模式
+
+从仓库根目录执行：
+
+```bash
+./scripts/dev.sh
+```
+
+这个脚本会：
+
+- 检查 Node 版本与仓库内置 Yarn
+- 首次运行时安装依赖
+- Node 版本变化时自动重建 `better-sqlite3` native dependency
+- 在没有本地 env 时创建 `.env` 和 `apps/web/.env.local`
+- 初始化本地 SQLite 目录并执行 migrations
+- 同时启动前端和后端
+
+可选参数：
+
+```bash
+./scripts/dev.sh --install      # 强制重新执行 yarn install
+./scripts/dev.sh --no-install   # 跳过依赖安装和 native rebuild
+./scripts/dev.sh --skip-migrate # 跳过启动前迁移检查
+```
+
+当前数据库是本地 SQLite 文件，不需要单独启动数据库服务。默认路径是 `apps/server/data/open-science.sqlite`。
+
+### 手动启动
+
 1. 安装依赖
 
 ```bash
@@ -59,16 +88,16 @@ yarn dev:server
 
 ## 常用端口
 
-- Web：`5173`
-- Server：`4000`（可通过 `SERVER_PORT` 配置）
-- Health check：`http://127.0.0.1:4000/healthz`
+- Web：`27183`（可通过 `VITE_DEV_SERVER_PORT` 配置）
+- Server：`27184`（可通过 `SERVER_PORT` 配置）
+- Health check：`http://127.0.0.1:27184/healthz`
 
 ## 环境变量
 
 - Server 示例配置：`apps/server/.env.example`
 - 运行时可在仓库根目录 `.env` 或 `apps/server/.env` 放置本地配置
 - `SQLITE_PATH`、`LOG_DIR`、`MIGRATION_DIR` 等相对路径会基于仓库根目录解析
-- Web dev server 默认把 `/api` 和 `/healthz` 代理到 `http://127.0.0.1:4000`
+- Web dev server 默认把 `/api` 和 `/healthz` 代理到 `http://127.0.0.1:27184`
 - Web 代理目标可通过 `VITE_API_PROXY_TARGET` 覆盖
 - Draft working directory 可通过 `VITE_AGENT_DEFAULT_CWD` 预填
 
@@ -123,7 +152,7 @@ yarn workspace @open-science/server test
 启动服务后，确认后端健康检查：
 
 ```bash
-curl http://127.0.0.1:4000/healthz
+curl http://127.0.0.1:27184/healthz
 ```
 
 ## V0 边界
