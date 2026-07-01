@@ -11,10 +11,14 @@
     "db:migrate": "tsx src/db/migrate.ts"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.197",
+    "@anthropic-ai/sdk": "^0.109.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@open-science/contracts": "workspace:*",
     "better-sqlite3": "^12.4.2",
     "dotenv": "^17.0.1",
-    "fastify": "^4.29.1"
+    "fastify": "^4.29.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",

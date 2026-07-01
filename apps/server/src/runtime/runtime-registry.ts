@@ -10,12 +10,14 @@ import {
   type RuntimeStartTurnInput
 } from './code-agent-provider'
 import { CodexRuntime } from './providers/codex/codex-runtime'
+import { ClaudeRuntime } from './providers/claude/claude-runtime'
 
 export class RuntimeRegistry {
   private readonly runtimes = new Map<AgentProvider, CodeAgentProviderRuntime>()
 
   constructor() {
     this.runtimes.set('codex', new CodexRuntime())
+    this.runtimes.set('claude', new ClaudeRuntime())
   }
 
   async startInitialTurn(input: RuntimeStartInitialTurnInput): Promise<void> {

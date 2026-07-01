@@ -21,6 +21,11 @@ export interface ServerConfig {
   codexDefaultModel: string | null
   codexApprovalPolicy: 'never' | 'on-request' | 'on-failure' | 'untrusted'
   codexSandbox: 'danger-full-access' | 'workspace-write' | 'read-only'
+  claudeCodeBinaryPath: string
+  claudeConfigDir: string | null
+  claudeDefaultModel: string | null
+  claudePermissionMode: 'bypassPermissions' | 'default' | 'acceptEdits' | 'plan' | 'dontAsk'
+  claudeAllowDangerouslySkipPermissions: boolean
 }
 
 const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
@@ -75,6 +80,27 @@ function resolveCodexSandbox(value: string | undefined): ServerConfig['codexSand
   }
 }
 
+function resolveClaudePermissionMode(value: string | undefined): ServerConfig['claudePermissionMode'] {
+  switch (value) {
+    case 'default':
+    case 'acceptEdits':
+    case 'plan':
+    case 'dontAsk':
+      return value
+    case 'bypassPermissions':
+    default:
+      return 'bypassPermissions'
+  }
+}
+
+function resolveBoolean(value: string | undefined, defaultValue: boolean): boolean {
+  if (value === undefined) {
+    return defaultValue
+  }
+
+  return value === '1' || value.toLowerCase() === 'true'
+}
+
 export const config: ServerConfig = {
   host: process.env.SERVER_HOST ?? '0.0.0.0',
   port: Number.isNaN(rawPort) ? 4000 : rawPort,
@@ -90,7 +116,15 @@ export const config: ServerConfig = {
   codexHome: resolveWorkspacePath(process.env.CODEX_HOME) ?? null,
   codexDefaultModel: process.env.CODEX_DEFAULT_MODEL?.trim() || null,
   codexApprovalPolicy: resolveCodexApprovalPolicy(process.env.CODEX_APPROVAL_POLICY),
-  codexSandbox: resolveCodexSandbox(process.env.CODEX_SANDBOX)
+  codexSandbox: resolveCodexSandbox(process.env.CODEX_SANDBOX),
+  claudeCodeBinaryPath: process.env.CLAUDE_CODE_BINARY_PATH?.trim() || 'claude',
+  claudeConfigDir: resolveWorkspacePath(process.env.CLAUDE_CONFIG_DIR) ?? null,
+  claudeDefaultModel: process.env.CLAUDE_DEFAULT_MODEL?.trim() || null,
+  claudePermissionMode: resolveClaudePermissionMode(process.env.CLAUDE_PERMISSION_MODE),
+  claudeAllowDangerouslySkipPermissions: resolveBoolean(
+    process.env.CLAUDE_ALLOW_DANGEROUSLY_SKIP_PERMISSIONS,
+    true
+  )
 }
 
 export function ensureRuntimeDirs(): void {
