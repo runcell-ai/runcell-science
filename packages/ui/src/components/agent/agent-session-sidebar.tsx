@@ -9,7 +9,7 @@ import {
   TooltipTrigger
 } from '../ui/tooltip'
 import { StatusPill } from './status-pill'
-import { displaySessionTitle, providerLabel } from './utils'
+import { displaySessionTitle, formatRelativeTime, providerLabel } from './utils'
 
 type AgentSessionSidebarProps = {
   sessions: AgentSessionSummary[]
@@ -33,14 +33,14 @@ function AgentSessionSidebar({
         <div className="panel-actions">
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="outline" size="icon-sm" onClick={onRefresh}>
+              <Button variant="ghost" size="icon-sm" onClick={onRefresh}>
                 <RefreshCw />
                 <span className="sr-only">Refresh sessions</span>
               </Button>
             </TooltipTrigger>
             <TooltipContent>Refresh sessions</TooltipContent>
           </Tooltip>
-          <Button className="primary-action" onClick={onStartDraft}>
+          <Button size="sm" onClick={onStartDraft}>
             <Plus />
             New
           </Button>
@@ -50,7 +50,9 @@ function AgentSessionSidebar({
       <ScrollArea className="panel-scroll">
         <div className="session-list">
           {sessions.length === 0 ? (
-            <div className="panel-empty-state">No sessions</div>
+            <div className="panel-empty-state">
+              No sessions yet. Start one with New.
+            </div>
           ) : (
             sessions.map((session) => (
               <button
@@ -63,7 +65,10 @@ function AgentSessionSidebar({
                   {displaySessionTitle(session)}
                 </span>
                 <span className="session-meta">
-                  <span>{providerLabel(session.provider)}</span>
+                  <span className="session-meta-left">
+                    <span className="session-provider">{providerLabel(session.provider)}</span>
+                    <span className="session-time">{formatRelativeTime(session.updatedAt)}</span>
+                  </span>
                   <StatusPill status={session.status} />
                 </span>
               </button>

@@ -41,11 +41,12 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--primary);
   color: var(--primary-foreground);
-  font-size: 13px;
-  font-weight: 750;
+  font-family: var(--font-serif);
+  font-size: 14px;
+  font-weight: 650;
 }
 
 .gallery-brand h1,
@@ -119,8 +120,18 @@ body {
 }
 
 .gallery-toolbar h2 {
-  font-size: 22px;
+  font-family: var(--font-serif);
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
   line-height: 1.15;
+}
+
+.gallery-eyebrow {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 650;
 }
 
 .theme-segments {
@@ -226,6 +237,50 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.type-specimen {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.type-specimen-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.type-specimen-label {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.type-specimen p {
+  margin: 0;
+}
+
+.type-specimen-serif {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  line-height: 1.25;
+}
+
+.type-specimen-sans {
+  max-width: 560px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.type-specimen-mono {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--secondary-foreground);
 }
 
 .button-matrix {

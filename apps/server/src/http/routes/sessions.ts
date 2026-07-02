@@ -19,6 +19,7 @@ import type {
   CreateAgentSessionResponse,
   InterruptAgentSessionResponse,
   ListAgentSessionsResponse,
+  ListWorkspaceFilesResponse,
   ResolveAgentRequestRequest,
   ResolveAgentRequestResponse,
   RuntimeSseEvent
@@ -28,6 +29,7 @@ import { RuntimeProviderError, runtimeRegistry, sessionEventBus } from '../../ru
 import { AgentSessionServiceError, agentSessionService } from '../../services'
 import { inferArtifactKindFromPath } from '../../services/agent-session-service'
 import { currentWorktreeDiff, isGitRepository } from '../../services/git-worktree-diff-service'
+import { classifyWorkspaceFile, listWorkspaceFiles } from '../../services/workspace-files-service'
 
 const agentProviders: AgentProvider[] = ['codex', 'claude']
 const runtimeModes: AgentRuntimeMode[] = ['full_access', 'default']
@@ -163,6 +165,43 @@ function normalizeArtifactPath(cwd: string, candidate: string): string | ApiErro
 
 function contentTypeForPath(filePath: string): string {
   return artifactContentTypes[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream'
+}
+
+/** Like contentTypeForPath, but serves recognized text/data files as UTF-8
+ * text so the browser (and the artifacts panel) can display them inline. */
+function workspaceContentTypeForPath(filePath: string): string {
+  const known = artifactContentTypes[path.extname(filePath).toLowerCase()]
+  if (known) {
+    return known
+  }
+  return classifyWorkspaceFile(filePath) === 'text'
+    ? 'text/plain; charset=utf-8'
+    : 'application/octet-stream'
+}
+
+/** Resolve a cwd-relative workspace path to an absolute real path, rejecting
+ * anything that escapes the session directory. */
+function resolveWorkspaceFilePath(cwd: string, relativePath: string): string | ApiErrorResponse['error'] {
+  if (!isNonEmptyString(relativePath)) {
+    return { code: 'bad_request', message: 'path query parameter is required.' }
+  }
+  if (relativePath.includes('\0') || path.isAbsolute(relativePath)) {
+    return { code: 'bad_request', message: 'path must be relative to the session directory.' }
+  }
+
+  try {
+    const cwdReal = fs.realpathSync(cwd)
+    const targetReal = fs.realpathSync(path.resolve(cwdReal, relativePath))
+    if (!isInsideDirectory(cwdReal, targetReal)) {
+      return { code: 'bad_request', message: 'path must stay inside the session directory.' }
+    }
+    if (!fs.statSync(targetReal).isFile()) {
+      return { code: 'bad_request', message: 'path must reference a file.' }
+    }
+    return targetReal
+  } catch {
+    return { code: 'not_found', message: 'File was not found.' }
+  }
 }
 
 function safeFilename(filePath: string): string {
@@ -595,6 +634,53 @@ export const sessionsRoute: FastifyPluginAsync = async (server) => {
   server.get('/api/artifacts/:artifactId/asset/*', async (request, reply) =>
     sendArtifactAsset(request.params as { artifactId?: string; '*': string | undefined }, reply)
   )
+
+  server.get('/api/sessions/:sessionId/files', async (request, reply) => {
+    const params = request.params as { sessionId?: string }
+    if (!isNonEmptyString(params.sessionId)) {
+      return sendBadRequest(reply, 'sessionId is required.')
+    }
+
+    const detail = agentSessionService.getSessionDetail(params.sessionId)
+    if (!detail) {
+      return reply.code(404).send({
+        error: { code: 'not_found', message: 'Session was not found.' }
+      } satisfies ApiErrorResponse)
+    }
+
+    const result = listWorkspaceFiles(detail.session.cwd)
+    return reply.send({
+      root: result.root,
+      isDirectory: result.isDirectory,
+      files: result.files,
+      truncated: result.truncated
+    } satisfies ListWorkspaceFilesResponse)
+  })
+
+  server.get('/api/sessions/:sessionId/files/raw', async (request, reply) => {
+    const params = request.params as { sessionId?: string }
+    if (!isNonEmptyString(params.sessionId)) {
+      return sendBadRequest(reply, 'sessionId is required.')
+    }
+
+    const detail = agentSessionService.getSessionDetail(params.sessionId)
+    if (!detail) {
+      return reply.code(404).send({
+        error: { code: 'not_found', message: 'Session was not found.' }
+      } satisfies ApiErrorResponse)
+    }
+
+    const query = request.query as { path?: string }
+    const resolved = resolveWorkspaceFilePath(detail.session.cwd, query.path ?? '')
+    if (typeof resolved !== 'string') {
+      return sendApiError(reply, resolved)
+    }
+
+    reply.header('Content-Type', workspaceContentTypeForPath(resolved))
+    reply.header('Content-Disposition', `inline; filename="${safeFilename(resolved)}"`)
+    reply.header('Cache-Control', 'no-store')
+    return reply.send(fs.createReadStream(resolved))
+  })
 
   server.get('/api/sessions/:sessionId/worktree-diff/status', async (request, reply) => {
     const params = request.params as { sessionId?: string }

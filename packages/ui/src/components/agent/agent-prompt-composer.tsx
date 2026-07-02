@@ -19,7 +19,7 @@ function AgentPromptComposer({
   canSend,
   isSending,
   disabled,
-  placeholder = 'Message',
+  placeholder = 'Describe the task for the agent',
   onValueChange,
   onSubmit
 }: AgentPromptComposerProps) {
@@ -42,6 +42,7 @@ function AgentPromptComposer({
   return (
     <form className="composer" onSubmit={submitMessage}>
       <Textarea
+        className="composer-input"
         rows={3}
         placeholder={placeholder}
         value={value}
@@ -49,14 +50,17 @@ function AgentPromptComposer({
         onKeyDown={handleDraftKeyDown}
         disabled={disabled}
       />
-      <Button
-        className="primary-action send-button"
-        type="submit"
-        disabled={!canSend}
-      >
-        {isSending ? <Loader2 className="spin-icon" /> : <Send />}
-        Send
-      </Button>
+      <div className="composer-footer">
+        <span className="composer-hint">
+          <kbd>⌘</kbd>
+          <kbd>↵</kbd>
+          to send
+        </span>
+        <Button type="submit" size="sm" disabled={!canSend}>
+          {isSending ? <Loader2 className="spin-icon" /> : <Send />}
+          Send
+        </Button>
+      </div>
     </form>
   )
 }

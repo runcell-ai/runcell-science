@@ -34,6 +34,8 @@ export {
   AgentSessionSidebar,
   AgentTimeline,
   displaySessionTitle,
+  formatRelativeTime,
+  formatTimeOfDay,
   providerLabel,
   statusLabel
 } from './components/agent'

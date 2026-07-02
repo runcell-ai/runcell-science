@@ -1,0 +1,24 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ui-gallery",
+      "runtimeExecutable": "yarn",
+      "runtimeArgs": ["--cwd", "packages/ui", "run", "dev"],
+      "port": 27185
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "yarn",
+      "runtimeArgs": ["--cwd", "apps/web", "run", "dev"],
+      "port": 27183,
+      "autoPort": true
+    },
+    {
+      "name": "server",
+      "runtimeExecutable": "yarn",
+      "runtimeArgs": ["--cwd", "apps/server", "run", "dev"],
+      "port": 27184
+    }
+  ]
+}

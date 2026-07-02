@@ -245,8 +245,9 @@ else
 fi
 
 info "Starting development services"
-printf 'Web:           http://127.0.0.1:%s\n' "$DEFAULT_WEB_PORT"
-printf 'Server health: http://127.0.0.1:%s/healthz\n' "$DEFAULT_SERVER_PORT"
+printf 'Web:           http://localhost:%s\n' "$DEFAULT_WEB_PORT"
+printf 'Server health: http://localhost:%s/healthz\n' "$DEFAULT_SERVER_PORT"
+printf 'Note:          Vite may bind localhost to ::1 on macOS, so 127.0.0.1 is not always equivalent.\n'
 printf 'Logs:          logs/dev/web.log and logs/dev/server.log\n'
 printf 'Stop:          Ctrl-C\n\n'
 

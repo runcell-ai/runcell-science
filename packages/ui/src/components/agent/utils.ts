@@ -63,6 +63,39 @@ export function displaySessionTitle(
   return session.title?.trim() || `${providerLabel(session.provider)} session`
 }
 
+export function formatTimeOfDay(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+export function formatRelativeTime(iso: string, now = new Date()): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+
+  const seconds = Math.round((now.getTime() - date.getTime()) / 1000)
+  if (seconds < 60) {
+    return 'now'
+  }
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) {
+    return `${minutes}m`
+  }
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) {
+    return `${hours}h`
+  }
+  const days = Math.round(hours / 24)
+  if (days < 7) {
+    return `${days}d`
+  }
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric' })
+}
+
 export function compactText(value: string, maxLength = 88): string {
   const normalized = value.replace(/\s+/g, ' ').trim()
   if (normalized.length <= maxLength) {

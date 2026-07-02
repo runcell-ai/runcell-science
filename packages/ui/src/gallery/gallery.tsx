@@ -66,7 +66,7 @@ const groups: ComponentGroup[] = [
   {
     id: 'foundations',
     label: 'Foundations',
-    items: ['Tokens', 'Theme']
+    items: ['Tokens', 'Typography', 'Theme']
   },
   {
     id: 'primitives',
@@ -77,11 +77,13 @@ const groups: ComponentGroup[] = [
 
 const tokenSwatches = [
   { name: 'Primary', value: 'var(--primary)' },
+  { name: 'Success', value: 'var(--success)' },
+  { name: 'Warning', value: 'var(--warning)' },
+  { name: 'Destructive', value: 'var(--destructive)' },
   { name: 'Secondary', value: 'var(--secondary)' },
   { name: 'Muted', value: 'var(--muted)' },
   { name: 'Surface', value: 'var(--surface)' },
-  { name: 'Border', value: 'var(--border)' },
-  { name: 'Destructive', value: 'var(--destructive)' }
+  { name: 'Border', value: 'var(--border)' }
 ]
 
 const themeOptions: Array<{
@@ -174,6 +176,29 @@ const galleryTimelineItems: AgentTimelineItem[] = [
       createdAt: '2026-07-01T12:02:00.000Z',
       resolvedAt: null
     }
+  },
+  {
+    id: 'message-2',
+    type: 'message',
+    createdAt: '2026-07-01T12:03:00.000Z',
+    message: {
+      id: 'message-2',
+      sessionId: 'session-1',
+      turnId: 'turn-1',
+      role: 'assistant',
+      text: [
+        'The session UI now lives in `packages/ui`. Key moves:',
+        '',
+        '- **Components**: `AgentTimeline`, `AgentPromptComposer`, and the sidebar',
+        '- **Tokens**: colors, radii, and type families in `styles.css`',
+        '',
+        'Next I suggest extracting the artifact preview panel as well.'
+      ].join('\n'),
+      status: 'completed',
+      providerItemId: null,
+      createdAt: '2026-07-01T12:03:00.000Z',
+      updatedAt: '2026-07-01T12:03:00.000Z'
+    }
   }
 ]
 
@@ -214,7 +239,7 @@ function Gallery() {
             <span className="gallery-mark">OS</span>
             <div>
               <h1>Open Science UI</h1>
-              <p>Private component system</p>
+              <p>Manuscript design language</p>
             </div>
           </div>
 
@@ -298,6 +323,9 @@ function Gallery() {
                         status="running"
                         connectionStatus="live"
                         running
+                        path="/Users/example/open-science"
+                        artifactCount={2}
+                        onOpenArtifacts={() => undefined}
                         onInterrupt={() => undefined}
                       />
                       <AgentErrorBanner message="Example runtime warning shown in the conversation shell." />
@@ -380,7 +408,7 @@ function Gallery() {
                   <article className="preview-card">
                     <header>
                       <h3>Tokens</h3>
-                      <span>6</span>
+                      <span>{tokenSwatches.length}</span>
                     </header>
                     <div className="token-grid">
                       {tokenSwatches.map((token) => (
@@ -393,6 +421,34 @@ function Gallery() {
                           <code>{token.value}</code>
                         </div>
                       ))}
+                    </div>
+                  </article>
+
+                  <article className="preview-card preview-card-wide">
+                    <header>
+                      <h3>Typography</h3>
+                      <span>3 families</span>
+                    </header>
+                    <div className="type-specimen">
+                      <div className="type-specimen-row">
+                        <span className="type-specimen-label">Serif · display</span>
+                        <p className="type-specimen-serif">
+                          The interface of record for scientific work
+                        </p>
+                      </div>
+                      <div className="type-specimen-row">
+                        <span className="type-specimen-label">Sans · interface</span>
+                        <p className="type-specimen-sans">
+                          Quiet chrome, prominent content. Body copy, labels, and
+                          controls are set in the system sans.
+                        </p>
+                      </div>
+                      <div className="type-specimen-row">
+                        <span className="type-specimen-label">Mono · data</span>
+                        <p className="type-specimen-mono">
+                          ~/experiments/rna-seq/results_2026-07-01.parquet
+                        </p>
+                      </div>
                     </div>
                   </article>
 

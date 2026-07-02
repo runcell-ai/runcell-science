@@ -3,6 +3,8 @@ export {
   displaySessionTitle,
   eventSummary,
   eventTitle,
+  formatRelativeTime,
+  formatTimeOfDay,
   providerLabel,
   statusLabel
 } from './utils'

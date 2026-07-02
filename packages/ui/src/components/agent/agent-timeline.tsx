@@ -1,15 +1,17 @@
-import { ExternalLink, FileDiff, FileText, Globe2, Image as ImageIcon, Loader2 } from 'lucide-react'
+import { useEffect, useRef } from 'react'
+import { ExternalLink, FileText, Globe2, Image as ImageIcon, Loader2 } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
 
 import { Button } from '../ui/button'
 import { ScrollArea } from '../ui/scroll-area'
 import { AgentDiffView } from './agent-diff-view'
-import { AgentActivityIcon, AgentMessageIcon } from './agent-icons'
+import { AgentActivityIcon } from './agent-icons'
 import type { AgentRequestDecision, AgentTimelineItem } from './types'
 import {
   compactText,
   eventSummary,
   eventTitle,
-  statusLabel
+  formatTimeOfDay
 } from './utils'
 import { StatusPill } from './status-pill'
 
@@ -31,11 +33,37 @@ function AgentTimeline({
   onResolveRequest,
   onOpenArtifact
 }: AgentTimelineProps) {
+  const endRef = useRef<HTMLDivElement | null>(null)
+  const pinnedRef = useRef(true)
+
+  useEffect(() => {
+    const viewport = endRef.current?.closest('[data-slot="scroll-area-viewport"]')
+    if (!(viewport instanceof HTMLElement)) {
+      return
+    }
+
+    const trackPinned = () => {
+      pinnedRef.current =
+        viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 80
+    }
+    viewport.addEventListener('scroll', trackPinned, { passive: true })
+    return () => viewport.removeEventListener('scroll', trackPinned)
+  }, [])
+
+  useEffect(() => {
+    const viewport = endRef.current?.closest('[data-slot="scroll-area-viewport"]')
+    if (viewport instanceof HTMLElement && pinnedRef.current) {
+      viewport.scrollTop = viewport.scrollHeight
+    }
+  }, [items, running])
+
   return (
     <ScrollArea className="chat-scroll">
       <div className="timeline-list">
         {items.length === 0 ? (
-          <div className="chat-empty-state">No messages</div>
+          <div className="chat-empty-state">
+            No activity yet. Send a prompt below to start the session.
+          </div>
         ) : (
           items.map((item) => {
             if (item.type === 'message') {
@@ -67,9 +95,10 @@ function AgentTimeline({
         {running ? (
           <div className="running-row">
             <Loader2 />
-            <span>Running</span>
+            <span>Working</span>
           </div>
         ) : null}
+        <div ref={endRef} aria-hidden="true" />
       </div>
     </ScrollArea>
   )
@@ -82,15 +111,20 @@ function AgentMessageRow({
 }) {
   return (
     <article className={`timeline-row message-row message-${item.message.role}`}>
-      <div className="message-avatar">
-        <AgentMessageIcon role={item.message.role} />
-      </div>
       <div className="message-body">
-        <div className="message-heading">
-          <span>{item.message.role === 'assistant' ? 'Assistant' : 'User'}</span>
-          <span>{statusLabel(item.message.status)}</span>
+        <div className="message-meta">
+          <span className="message-role">
+            {item.message.role === 'assistant' ? 'Assistant' : 'You'}
+          </span>
+          <span className="message-time">{formatTimeOfDay(item.message.createdAt)}</span>
         </div>
-        <p>{item.message.text}</p>
+        {item.message.role === 'assistant' ? (
+          <div className="message-markdown">
+            <ReactMarkdown>{item.message.text}</ReactMarkdown>
+          </div>
+        ) : (
+          <p>{item.message.text}</p>
+        )}
       </div>
     </article>
   )
@@ -109,16 +143,16 @@ function AgentRequestRow({
 
   return (
     <article className={`timeline-row request-row request-${item.request.status}`}>
-      <div className="activity-marker">
-        <AgentActivityIcon status={item.request.status} />
-      </div>
       <div className="request-card">
-        <div className="request-copy">
-          <span className="request-title">
-            {item.request.title ?? item.request.type}
+        <div className="request-heading">
+          <span className="request-eyebrow">
+            {isOpen ? 'Approval required' : 'Approval request'}
           </span>
           <StatusPill status={item.request.status} />
         </div>
+        <span className="request-title">
+          {item.request.title ?? item.request.type}
+        </span>
         {isOpen ? (
           <div className="request-actions">
             <Button
@@ -130,7 +164,6 @@ function AgentRequestRow({
               Deny
             </Button>
             <Button
-              className="primary-action"
               size="sm"
               disabled={resolvingRequestId === item.request.id}
               onClick={() => onResolveRequest(item.request, 'allow')}
@@ -151,9 +184,6 @@ function AgentDiffRow({
 }) {
   return (
     <article className="timeline-row diff-row">
-      <div className="activity-marker">
-        <FileDiff className="activity-icon diff-activity-icon" />
-      </div>
       <AgentDiffView diff={item.diff} />
     </article>
   )
@@ -172,12 +202,12 @@ function artifactLabel(item: Extract<AgentTimelineItem, { type: 'artifact' }>): 
 
 function ArtifactIcon({ item }: { item: Extract<AgentTimelineItem, { type: 'artifact' }> }) {
   if (item.artifact.kind === 'url') {
-    return <Globe2 className="activity-icon artifact-activity-icon" />
+    return <Globe2 />
   }
   if (item.artifact.kind === 'image') {
-    return <ImageIcon className="activity-icon artifact-activity-icon" />
+    return <ImageIcon />
   }
-  return <FileText className="activity-icon artifact-activity-icon" />
+  return <FileText />
 }
 
 function AgentArtifactRow({
@@ -189,10 +219,10 @@ function AgentArtifactRow({
 }) {
   return (
     <article className={`timeline-row artifact-row${item.active ? ' is-active' : ''}`}>
-      <div className="activity-marker">
-        <ArtifactIcon item={item} />
-      </div>
       <div className="artifact-card">
+        <div className="artifact-card-icon">
+          <ArtifactIcon item={item} />
+        </div>
         <div className="artifact-card-copy">
           <span className="artifact-card-title">{artifactTitle(item)}</span>
           <span className="artifact-card-path">{artifactLabel(item)}</span>
@@ -215,13 +245,11 @@ function AgentToolCallRow({
 
   return (
     <article className="timeline-row activity-row">
-      <div className="activity-marker">
-        <AgentActivityIcon status={item.event.status} />
-      </div>
+      <AgentActivityIcon status={item.event.status} />
       <div className="activity-body">
         <div className="activity-title-row">
-          <span>{eventTitle(item.event)}</span>
-          {item.event.status ? <StatusPill status={item.event.status} /> : null}
+          <span className="activity-title">{eventTitle(item.event)}</span>
+          <span className="activity-time">{formatTimeOfDay(item.event.createdAt)}</span>
         </div>
         {summary ? <p>{compactText(summary, 220)}</p> : null}
       </div>

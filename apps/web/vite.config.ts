@@ -15,7 +15,8 @@ function resolvePort(value: string | undefined, fallback: number): number {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const apiProxyTarget = env.VITE_API_PROXY_TARGET || defaultApiProxyTarget
-  const webPort = resolvePort(env.VITE_DEV_SERVER_PORT, defaultWebPort)
+  // PORT lets a harness assign a free port; .env.local supplies the usual default.
+  const webPort = resolvePort(env.PORT ?? env.VITE_DEV_SERVER_PORT, defaultWebPort)
 
   return {
     plugins: [react(), tailwindcss()],

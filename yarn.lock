@@ -567,6 +567,7 @@ __metadata:
     oxlint: "npm:^1.71.0"
     react: "npm:^19.2.7"
     react-dom: "npm:^19.2.7"
+    react-markdown: "npm:^10.1.0"
     react-resizable-panels: "npm:^2.1.7"
     tailwind-merge: "npm:^3.3.1"
     tailwindcss: "npm:^4.0.0"

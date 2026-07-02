@@ -1,4 +1,4 @@
-import { CircleDot, FileDiff, Square } from 'lucide-react'
+import { CircleDot, FileDiff, PanelRightOpen, Square } from 'lucide-react'
 
 import { Button } from '../ui/button'
 import {
@@ -16,9 +16,12 @@ type AgentConversationHeaderProps = {
   status: string
   connectionStatus: AgentConnectionStatus | null
   running: boolean
+  path?: string
+  artifactCount?: number
   showDiffButton?: boolean
   diffButtonDisabled?: boolean
   onOpenDiff?: () => void
+  onOpenArtifacts?: () => void
   onInterrupt: () => void
 }
 
@@ -28,9 +31,12 @@ function AgentConversationHeader({
   status,
   connectionStatus,
   running,
+  path,
+  artifactCount = 0,
   showDiffButton = false,
   diffButtonDisabled = false,
   onOpenDiff,
+  onOpenArtifacts,
   onInterrupt
 }: AgentConversationHeaderProps) {
   return (
@@ -38,7 +44,7 @@ function AgentConversationHeader({
       <div className="conversation-title-group">
         <h1 className="conversation-title">{title}</h1>
         <div className="conversation-meta">
-          {providerLabel}
+          <span className="conversation-provider">{providerLabel}</span>
           <StatusPill status={status} />
           {connectionStatus ? (
             <span className={`connection-dot connection-${connectionStatus}`}>
@@ -48,27 +54,35 @@ function AgentConversationHeader({
                 : statusLabel(connectionStatus)}
             </span>
           ) : null}
+          {path ? (
+            <span className="conversation-path" title={path}>
+              {path}
+            </span>
+          ) : null}
         </div>
       </div>
 
       <div className="conversation-actions">
+        {onOpenArtifacts ? (
+          <Button variant="outline" size="sm" onClick={onOpenArtifacts}>
+            <PanelRightOpen />
+            Artifacts
+            {artifactCount > 0 ? (
+              <span className="conversation-artifact-count">{artifactCount}</span>
+            ) : null}
+          </Button>
+        ) : null}
+
         {showDiffButton ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span>
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  onClick={onOpenDiff}
-                  disabled={diffButtonDisabled || !onOpenDiff}
-                >
-                  <FileDiff />
-                  <span className="sr-only">Open project diff</span>
-                </Button>
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>Open project diff</TooltipContent>
-          </Tooltip>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onOpenDiff}
+            disabled={diffButtonDisabled || !onOpenDiff}
+          >
+            <FileDiff />
+            Changes
+          </Button>
         ) : null}
 
         <Tooltip>

@@ -238,6 +238,31 @@ export interface AgentArtifactMarkdownContentResponse {
   content: string
 }
 
+/**
+ * A file discovered on disk inside a session's working directory. Workspace
+ * files and session artifacts are surfaced together in the artifacts browser:
+ * artifacts are files the agent chose to highlight, workspace files are
+ * everything else the user can still open.
+ */
+export type WorkspaceFileKind = 'image' | 'pdf' | 'markdown' | 'html' | 'text' | 'other'
+
+export interface WorkspaceFile {
+  /** Path relative to the session cwd, using forward slashes. */
+  path: string
+  name: string
+  kind: WorkspaceFileKind
+  size: number
+  modifiedAt: string
+}
+
+export interface ListWorkspaceFilesResponse {
+  root: string
+  isDirectory: boolean
+  files: WorkspaceFile[]
+  /** True when the walk hit its cap and some files were omitted. */
+  truncated: boolean
+}
+
 export interface ResolveAgentRequestRequest {
   decision: 'allow' | 'deny' | 'answer'
   answer?: string
