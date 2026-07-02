@@ -11,8 +11,11 @@ import type {
   AddMcpServerRequest,
   ImportMcpServersRequest,
   ImportMcpServersResponse,
+  ImportSkillRequest,
+  ImportSkillResponse,
   ListAgentSessionsResponse,
   ListMcpServersResponse,
+  ListSkillsResponse,
   McpOauthLoginResponse,
   MutateMcpServerResponse,
   RemoveMcpServerRequest,
@@ -116,6 +119,26 @@ export const api = {
     requestJson<ImportMcpServersResponse>('/api/mcp/import', {
       method: 'POST',
       body: JSON.stringify(input)
+    }),
+
+  listSkills: (input: { provider: string; cwd?: string; sessionId?: string; refresh?: boolean }) => {
+    const params = new URLSearchParams({ provider: input.provider })
+    if (input.cwd) params.set('cwd', input.cwd)
+    if (input.sessionId) params.set('sessionId', input.sessionId)
+    if (input.refresh) params.set('refresh', 'true')
+    return requestJson<ListSkillsResponse>(`/api/skills?${params.toString()}`)
+  },
+
+  importSkill: (input: ImportSkillRequest) =>
+    requestJson<ImportSkillResponse>('/api/skills/import', {
+      method: 'POST',
+      body: JSON.stringify(input)
+    }),
+
+  setSkillEnabled: (name: string, enabled: boolean) =>
+    requestJson<MutateMcpServerResponse>('/api/skills/codex/enabled', {
+      method: 'PATCH',
+      body: JSON.stringify({ name, enabled })
     }),
 
   listMcpServers: (input?: { cwd?: string; refresh?: boolean }) => {

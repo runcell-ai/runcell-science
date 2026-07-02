@@ -410,3 +410,36 @@ export interface ImportMcpServersResponse {
 export interface McpOauthLoginResponse {
   authorizationUrl: string
 }
+
+export type SkillScopeKind = 'user' | 'repo' | 'system' | 'admin' | 'builtin'
+
+export interface SkillView {
+  provider: AgentProvider
+  name: string
+  description: string | null
+  path: string | null
+  scope: SkillScopeKind
+  enabled: boolean
+}
+
+export interface ListSkillsResponse {
+  skills: SkillView[]
+  warnings: string[]
+}
+
+export interface ImportSkillRequest {
+  name: string
+  content: string
+  providers: AgentProvider[]
+}
+
+export interface ImportSkillResponse {
+  written: string[]
+  skipped: string[]
+}
+
+export interface SetSkillEnabledRequest {
+  name?: string
+  path?: string
+  enabled: boolean
+}

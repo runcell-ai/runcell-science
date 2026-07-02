@@ -18,10 +18,12 @@ import {
 import type { AgentProviderOption } from '@open-science/ui'
 import { ArtifactsPanel } from './artifacts-panel'
 import { ConnectorsPanel } from './connectors-panel'
+import { SkillsPanel } from './skills-panel'
 import { WorktreeDiffPanel } from './worktree-diff-panel'
 import { useIsNarrow } from './hooks/use-is-narrow'
 import { useSessionList } from './hooks/use-session-list'
 import { useSessionStream } from './hooks/use-session-stream'
+import { useSkills } from './hooks/use-skills'
 import { useWorkspace } from './hooks/use-workspace'
 import { apiBaseUrl } from './lib/api'
 import { persistCwd, readStoredCwd } from './lib/storage'
@@ -37,6 +39,7 @@ function App() {
   const [provider, setProvider] = useState<AgentProvider>('codex')
   const [cwd, setCwd] = useState(readStoredCwd)
   const [connectorsOpen, setConnectorsOpen] = useState(false)
+  const [skillsOpen, setSkillsOpen] = useState(false)
 
   const workspace = useWorkspace()
   const sessionList = useSessionList(workspace.reportError)
@@ -50,6 +53,14 @@ function App() {
     setCwd(value)
     persistCwd(value)
   }
+
+  const activeProvider = workspace.detail?.session.provider ?? provider
+  const activeCwd = workspace.detail?.session.cwd ?? (cwd.trim().length > 0 ? cwd : null)
+  const composerSkills = useSkills({
+    provider: activeProvider,
+    cwd: activeCwd,
+    sessionId: workspace.activeSessionId
+  })
 
   const artifactCount = workspace.detail?.artifacts.length ?? 0
   const canSend =
@@ -79,6 +90,14 @@ function App() {
                 onClick={() => setConnectorsOpen(true)}
               >
                 Connectors
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="sidebar-footer-button"
+                onClick={() => setSkillsOpen(true)}
+              >
+                Skills
               </Button>
             </div>
           </ResizablePanel>
@@ -141,6 +160,8 @@ function App() {
               canSend={canSend}
               isSending={workspace.isSending}
               disabled={workspace.isSending || workspace.running}
+              skills={composerSkills.map((skill) => ({ name: skill.name, description: skill.description }))}
+              skillTrigger={activeProvider === 'codex' ? '$' : '/'}
               onValueChange={workspace.setMessageDraft}
               onSubmit={() => void workspace.sendMessage({ provider, cwd })}
             />
@@ -177,10 +198,12 @@ function App() {
           ) : null}
         </ResizablePanelGroup>
 
-        <ConnectorsPanel
-          open={connectorsOpen}
-          cwd={workspace.detail?.session.cwd ?? (cwd.trim().length > 0 ? cwd : null)}
-          onOpenChange={setConnectorsOpen}
+        <ConnectorsPanel open={connectorsOpen} cwd={activeCwd} onOpenChange={setConnectorsOpen} />
+        <SkillsPanel
+          open={skillsOpen}
+          cwd={activeCwd}
+          sessionId={workspace.activeSessionId}
+          onOpenChange={setSkillsOpen}
         />
       </div>
     </TooltipProvider>

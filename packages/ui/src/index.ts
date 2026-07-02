@@ -41,6 +41,7 @@ export {
 } from './components/agent'
 export type {
   AgentConnectionStatus,
+  ComposerSkill,
   AgentProviderOption,
   AgentRequestDecision,
   AgentTimelineItem
