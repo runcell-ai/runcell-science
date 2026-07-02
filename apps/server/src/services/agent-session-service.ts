@@ -249,6 +249,15 @@ export class AgentSessionService {
     return projection.message
   }
 
+  updateDisabledMcpServers(sessionId: string, disabledServers: string[]): AgentSessionDetail {
+    const detail = this.repository.updateDisabledMcpServers(sessionId, disabledServers)
+    if (!detail) {
+      throw new AgentSessionServiceError('not_found', 'Session was not found.', 404)
+    }
+    this.publishSessionUpdated(detail.session)
+    return detail
+  }
+
   updateProviderBinding(input: UpdateProviderBindingInput): AgentSessionDetail {
     const detail = this.repository.updateProviderBinding(input)
     if (!detail) {

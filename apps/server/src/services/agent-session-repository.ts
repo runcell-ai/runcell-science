@@ -40,6 +40,7 @@ interface AgentSessionRow {
   provider_thread_id: string | null
   resume_cursor_json: string | null
   last_error: string | null
+  disabled_mcp_servers_json: string | null
   created_at: string
   updated_at: string
 }
@@ -287,8 +288,21 @@ function mapSession(row: AgentSessionRow): AgentSession {
     providerThreadId: row.provider_thread_id,
     resumeCursorJson: row.resume_cursor_json,
     lastError: row.last_error,
+    disabledMcpServers: parseDisabledMcpServers(row.disabled_mcp_servers_json),
     createdAt: row.created_at,
     updatedAt: row.updated_at
+  }
+}
+
+function parseDisabledMcpServers(value: string | null): string[] {
+  if (!value) {
+    return []
+  }
+  try {
+    const parsed = JSON.parse(value) as unknown
+    return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === 'string') : []
+  } catch {
+    return []
   }
 }
 
@@ -974,6 +988,21 @@ export class AgentSessionRepository {
         `
       )
       .run(timestamp, timestamp, sessionId)
+
+    return this.findSessionDetail(sessionId)
+  }
+
+  updateDisabledMcpServers(sessionId: string, disabledServers: string[]): AgentSessionDetail | null {
+    getDb()
+      .prepare(
+        `
+          UPDATE agent_sessions
+          SET disabled_mcp_servers_json = ?,
+              updated_at = ?
+          WHERE id = ?
+        `
+      )
+      .run(JSON.stringify(disabledServers), nowIso(), sessionId)
 
     return this.findSessionDetail(sessionId)
   }

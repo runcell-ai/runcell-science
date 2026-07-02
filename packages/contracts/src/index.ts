@@ -76,6 +76,7 @@ export interface AgentSession {
   providerThreadId: string | null
   resumeCursorJson: string | null
   lastError: string | null
+  disabledMcpServers: string[]
   createdAt: string
   updatedAt: string
 }
@@ -442,4 +443,8 @@ export interface SetSkillEnabledRequest {
   name?: string
   path?: string
   enabled: boolean
+}
+
+export interface UpdateSessionConnectorsRequest {
+  disabledServers: string[]
 }

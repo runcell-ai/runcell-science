@@ -865,6 +865,29 @@ export const sessionsRoute: FastifyPluginAsync = async (server) => {
     }
   })
 
+  server.patch('/api/sessions/:sessionId/connectors', async (request, reply) => {
+    const params = request.params as { sessionId?: string }
+    const body = request.body as { disabledServers?: unknown } | undefined
+    if (!isNonEmptyString(params.sessionId) || !Array.isArray(body?.disabledServers)) {
+      return sendBadRequest(reply, 'sessionId and disabledServers array are required.')
+    }
+
+    const disabledServers = body.disabledServers.filter((entry): entry is string => typeof entry === 'string')
+
+    try {
+      const detail = agentSessionService.updateDisabledMcpServers(params.sessionId, disabledServers)
+      // Codex keeps a long-lived app-server per session whose overrides are
+      // set at spawn; drop it so the next turn respawns and resumes the
+      // thread with the new selection. Claude injects per turn, no reset.
+      if (detail.session.provider === 'codex') {
+        runtimeRegistry.resetSession(detail.session)
+      }
+      return reply.send(detail)
+    } catch (error) {
+      return sendServiceError(reply, error)
+    }
+  })
+
   server.post('/api/sessions/:sessionId/interrupt', async (request, reply) => {
     const params = request.params as { sessionId?: string }
     if (!isNonEmptyString(params.sessionId)) {

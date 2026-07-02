@@ -17,6 +17,8 @@ export interface CodexJsonRpcMessage {
 export interface CodexJsonRpcClientOptions {
   binaryPath: string
   env?: NodeJS.ProcessEnv
+  /** Extra CLI args inserted before the app-server subcommand (e.g. -c overrides). */
+  extraArgs?: string[]
 }
 
 interface PendingRequest {
@@ -33,7 +35,7 @@ export class CodexJsonRpcClient extends EventEmitter {
 
   constructor(options: CodexJsonRpcClientOptions) {
     super()
-    this.child = spawn(options.binaryPath, ['app-server'], {
+    this.child = spawn(options.binaryPath, [...(options.extraArgs ?? []), 'app-server'], {
       env: options.env,
       stdio: ['pipe', 'pipe', 'pipe']
     })

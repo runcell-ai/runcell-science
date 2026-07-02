@@ -33,6 +33,11 @@ export interface CodeAgentProviderRuntime {
   startTurn(input: RuntimeStartTurnInput): Promise<void>
   resolveRequest(input: RuntimeResolveRequestInput): Promise<void>
   interrupt(input: RuntimeInterruptInput): Promise<void>
+  /**
+   * Drop cached provider state for a session so the next turn re-establishes
+   * it (used when session-scoped config such as connector selection changes).
+   */
+  resetSession?(sessionId: string): void
   dispose(): Promise<void>
 }
 

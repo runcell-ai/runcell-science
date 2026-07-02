@@ -10,6 +10,7 @@ import {
 
 import { config } from '../../../config/env'
 import { agentSessionService } from '../../../services'
+import { mcpManagementService } from '../../../services/mcp-management-service'
 import type {
   CodeAgentProviderRuntime,
   RuntimeInterruptInput,
@@ -49,7 +50,8 @@ export class ClaudeRuntime implements CodeAgentProviderRuntime {
     this.startQuery(input.session.id, input.turn.id, input.message.text, {
       cwd: input.session.cwd,
       model: input.session.model ?? config.claudeDefaultModel ?? undefined,
-      title: input.session.title ?? undefined
+      title: input.session.title ?? undefined,
+      disabledMcpServers: input.session.disabledMcpServers
     })
   }
 
@@ -65,7 +67,8 @@ export class ClaudeRuntime implements CodeAgentProviderRuntime {
     this.startQuery(input.session.id, input.turn.id, input.message.text, {
       cwd: input.session.cwd,
       model: input.session.model ?? config.claudeDefaultModel ?? undefined,
-      resume: input.session.providerSessionId
+      resume: input.session.providerSessionId,
+      disabledMcpServers: input.session.disabledMcpServers
     })
   }
 
@@ -93,7 +96,7 @@ export class ClaudeRuntime implements CodeAgentProviderRuntime {
     sessionId: string,
     turnId: string,
     prompt: string,
-    options: Pick<Options, 'cwd' | 'model' | 'resume' | 'title'>
+    options: Pick<Options, 'cwd' | 'model' | 'resume' | 'title'> & { disabledMcpServers?: string[] }
   ): void {
     if (this.activeTurns.has(sessionId)) {
       throw new RuntimeProviderError('provider_request_failed', 'Claude session already has an active turn.', 409)
@@ -116,7 +119,7 @@ export class ClaudeRuntime implements CodeAgentProviderRuntime {
   private async consumeQuery(
     activeTurn: ClaudeActiveTurn,
     prompt: string,
-    inputOptions: Pick<Options, 'cwd' | 'model' | 'resume' | 'title'>
+    inputOptions: Pick<Options, 'cwd' | 'model' | 'resume' | 'title'> & { disabledMcpServers?: string[] }
   ): Promise<void> {
     const sdkOptions: Options = {
       cwd: inputOptions.cwd,
@@ -140,7 +143,8 @@ export class ClaudeRuntime implements CodeAgentProviderRuntime {
         ...sanitizedProcessEnv(),
         CLAUDE_AGENT_SDK_CLIENT_APP: 'open-science/0.1.0',
         ...(config.claudeConfigDir ? { CLAUDE_CONFIG_DIR: config.claudeConfigDir } : {})
-      }
+      },
+      ...buildSessionMcpOverride(inputOptions.disabledMcpServers, inputOptions.cwd)
     }
 
     for await (const message of query({ prompt, options: sdkOptions })) {
@@ -319,6 +323,35 @@ export class ClaudeRuntime implements CodeAgentProviderRuntime {
       status,
       ...(summary !== undefined ? { summary } : {})
     })
+  }
+}
+
+/**
+ * Session-scoped connector selection. When servers are disabled for this
+ * session, rebuild the native server set minus the disabled ones and inject it
+ * with strictMcpConfig so nothing else loads. With no selection we inject
+ * nothing and the native config (including claude.ai connectors) applies.
+ */
+function buildSessionMcpOverride(
+  disabledMcpServers: string[] | undefined,
+  cwd: string | undefined
+): Pick<Options, 'mcpServers' | 'strictMcpConfig'> {
+  if (!disabledMcpServers || disabledMcpServers.length === 0) {
+    return {}
+  }
+
+  const disabled = new Set(disabledMcpServers)
+  const native = mcpManagementService.getClaudeServerConfigs(cwd)
+  const subset: Record<string, unknown> = {}
+  for (const [name, entry] of Object.entries(native)) {
+    if (!disabled.has(name)) {
+      subset[name] = entry
+    }
+  }
+
+  return {
+    mcpServers: subset as Options['mcpServers'],
+    strictMcpConfig: true
   }
 }
 

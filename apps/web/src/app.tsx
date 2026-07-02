@@ -18,6 +18,7 @@ import {
 import type { AgentProviderOption } from '@open-science/ui'
 import { ArtifactsPanel } from './artifacts-panel'
 import { ConnectorsPanel } from './connectors-panel'
+import { SessionConnectorsMenu } from './session-connectors-menu'
 import { SkillsPanel } from './skills-panel'
 import { WorktreeDiffPanel } from './worktree-diff-panel'
 import { useIsNarrow } from './hooks/use-is-narrow'
@@ -154,6 +155,17 @@ function App() {
               onResolveRequest={(request, decision) => void workspace.resolveRequest(request, decision)}
               onOpenArtifact={workspace.openArtifact}
             />
+
+            {workspace.activeSessionId && workspace.detail && !workspace.isDraft ? (
+              <div className="composer-tools-row">
+                <SessionConnectorsMenu
+                  sessionId={workspace.activeSessionId}
+                  provider={workspace.detail.session.provider}
+                  cwd={workspace.detail.session.cwd}
+                  disabledServers={workspace.detail.session.disabledMcpServers}
+                />
+              </div>
+            ) : null}
 
             <AgentPromptComposer
               value={workspace.messageDraft}

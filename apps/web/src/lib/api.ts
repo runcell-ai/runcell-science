@@ -149,5 +149,11 @@ export const api = {
     return requestJson<ListMcpServersResponse>(`/api/mcp/servers${query ? `?${query}` : ''}`)
   },
 
+  updateSessionConnectors: (sessionId: string, disabledServers: string[]) =>
+    requestJson<AgentSessionDetail>(`/api/sessions/${sessionId}/connectors`, {
+      method: 'PATCH',
+      body: JSON.stringify({ disabledServers })
+    }),
+
   sessionEventsUrl: (sessionId: string) => apiUrl(`/api/sessions/${sessionId}/events`)
 }

@@ -474,6 +474,49 @@ export class McpManagementService {
 
   // --------------------------------------------------------------- claude --
 
+  /**
+   * Merged raw claude MCP server entries (user < project < local precedence),
+   * used to rebuild a session-scoped subset for strictMcpConfig injection.
+   */
+  getClaudeServerConfigs(cwd?: string): Record<string, RawMcpServerEntry> {
+    const merged: Record<string, RawMcpServerEntry> = {}
+
+    const collect = (raw: unknown) => {
+      if (!isRecord(raw)) {
+        return
+      }
+      for (const [name, value] of Object.entries(raw)) {
+        const entry = toRawEntry(value)
+        if (entry) {
+          merged[name] = entry
+        }
+      }
+    }
+
+    try {
+      const configPath = this.claudeConfigJsonPath()
+      if (fs.existsSync(configPath)) {
+        const claudeJson = JSON.parse(fs.readFileSync(configPath, 'utf8')) as Record<string, unknown>
+        collect(claudeJson['mcpServers'])
+        if (cwd) {
+          const mcpJsonPath = path.join(cwd, '.mcp.json')
+          if (fs.existsSync(mcpJsonPath)) {
+            const parsed = JSON.parse(fs.readFileSync(mcpJsonPath, 'utf8')) as Record<string, unknown>
+            collect(parsed['mcpServers'])
+          }
+          const projects = claudeJson['projects']
+          if (isRecord(projects) && isRecord(projects[cwd])) {
+            collect((projects[cwd] as Record<string, unknown>)['mcpServers'])
+          }
+        }
+      }
+    } catch {
+      // Fall back to whatever was collected; injection degrades to fewer servers.
+    }
+
+    return merged
+  }
+
   private claudeConfigJsonPath(): string {
     return config.claudeConfigDir
       ? path.join(config.claudeConfigDir, '.claude.json')

@@ -54,6 +54,11 @@ export class RuntimeRegistry {
     await runtime.interrupt(input)
   }
 
+  resetSession(session: AgentSession): void {
+    const runtime = this.requireRuntime(session.provider)
+    runtime.resetSession?.(session.id)
+  }
+
   async dispose(): Promise<void> {
     await Promise.all([...this.runtimes.values()].map((runtime) => runtime.dispose()))
   }
