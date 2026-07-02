@@ -17,6 +17,7 @@ import type {
   RuntimeStartTurnInput
 } from '../../code-agent-provider'
 import { RuntimeProviderError } from '../../code-agent-provider'
+import { sanitizedProcessEnv } from '../../env-utils'
 import type { ServerNotification } from './generated/ServerNotification'
 import type { ServerRequest } from './generated/ServerRequest'
 import type { ThreadStartResponse } from './generated/v2/ThreadStartResponse'
@@ -44,6 +45,10 @@ interface CodexSessionState {
 
 type CodexResolution = ResolveAgentRequestRequest
 
+// Session-establishing RPCs must fail fast instead of hanging the HTTP request
+// forever when the app-server wedges (e.g. unauthenticated home directory).
+const SESSION_RPC_TIMEOUT_MS = 60_000
+
 export class CodexRuntime implements CodeAgentProviderRuntime {
   private readonly sessions = new Map<string, CodexSessionState>()
   private readonly threadToSessionId = new Map<string, string>()
@@ -56,7 +61,7 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
       approvalPolicy: config.codexApprovalPolicy,
       sandbox: config.codexSandbox,
       serviceName: 'open-science'
-    })
+    }, SESSION_RPC_TIMEOUT_MS)
 
     this.bindThread(state, response.thread.id, response.thread.sessionId)
     agentSessionService.updateProviderBinding({
@@ -166,7 +171,7 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
         capabilities: {
           experimentalApi: true
         }
-      })
+      }, SESSION_RPC_TIMEOUT_MS)
       client.notify('initialized', {})
     } catch (error) {
       client.dispose()
@@ -203,7 +208,7 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
       model: session.model ?? config.codexDefaultModel,
       approvalPolicy: config.codexApprovalPolicy,
       sandbox: config.codexSandbox
-    })
+    }, SESSION_RPC_TIMEOUT_MS)
 
     this.bindThread(state, response.thread.id, response.thread.sessionId)
     agentSessionService.updateProviderBinding({
@@ -240,7 +245,7 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
         model: session.model ?? config.codexDefaultModel,
         approvalPolicy: config.codexApprovalPolicy,
         sandboxPolicy: { type: 'dangerFullAccess' }
-      })
+      }, SESSION_RPC_TIMEOUT_MS)
 
       this.bindTurn(state, turn.id, response.turn.id)
       agentSessionService.updateTurnProviderId({
@@ -505,7 +510,7 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
 
   private buildEnv(): NodeJS.ProcessEnv {
     return {
-      ...process.env,
+      ...sanitizedProcessEnv(),
       ...(config.codexHome ? { CODEX_HOME: config.codexHome } : {})
     }
   }

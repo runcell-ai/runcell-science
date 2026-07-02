@@ -27,6 +27,7 @@ interface PendingRequest {
 export class CodexJsonRpcClient extends EventEmitter {
   private readonly child: ChildProcessWithoutNullStreams
   private readonly pendingRequests = new Map<number, PendingRequest>()
+  private readonly stderrTail: string[] = []
   private nextRequestId = 1
   private disposed = false
 
@@ -42,6 +43,10 @@ export class CodexJsonRpcClient extends EventEmitter {
 
     const stderr = readline.createInterface({ input: this.child.stderr })
     stderr.on('line', (line) => {
+      this.stderrTail.push(line)
+      if (this.stderrTail.length > 10) {
+        this.stderrTail.shift()
+      }
       this.emit('stderr', line)
     })
 
@@ -51,13 +56,16 @@ export class CodexJsonRpcClient extends EventEmitter {
     })
 
     this.child.on('exit', (code, signal) => {
-      const error = new Error(`Codex app-server exited with code ${code ?? 'null'} and signal ${signal ?? 'null'}.`)
+      const stderrSuffix = this.stderrTail.length > 0 ? ` Recent stderr: ${this.stderrTail.join(' | ')}` : ''
+      const error = new Error(
+        `Codex app-server exited with code ${code ?? 'null'} and signal ${signal ?? 'null'}.${stderrSuffix}`
+      )
       this.rejectAll(error)
       this.emit('exit', { code, signal })
     })
   }
 
-  request<T>(method: string, params: unknown): Promise<T> {
+  request<T>(method: string, params: unknown, timeoutMs?: number): Promise<T> {
     if (this.disposed) {
       return Promise.reject(new Error('Codex JSON-RPC client is disposed.'))
     }
@@ -72,9 +80,24 @@ export class CodexJsonRpcClient extends EventEmitter {
     }
 
     return new Promise<T>((resolve, reject) => {
+      let timer: NodeJS.Timeout | null = null
+      if (timeoutMs !== undefined) {
+        timer = setTimeout(() => {
+          if (this.pendingRequests.delete(id)) {
+            reject(new Error(`Codex request ${method} timed out after ${timeoutMs}ms.`))
+          }
+        }, timeoutMs)
+      }
+
       this.pendingRequests.set(id, {
-        resolve: (value) => resolve(value as T),
-        reject
+        resolve: (value) => {
+          if (timer) clearTimeout(timer)
+          resolve(value as T)
+        },
+        reject: (error) => {
+          if (timer) clearTimeout(timer)
+          reject(error)
+        }
       })
       this.write(message)
     })

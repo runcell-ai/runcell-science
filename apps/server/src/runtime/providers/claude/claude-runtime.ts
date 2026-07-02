@@ -18,6 +18,7 @@ import type {
   RuntimeStartTurnInput
 } from '../../code-agent-provider'
 import { RuntimeProviderError } from '../../code-agent-provider'
+import { sanitizedProcessEnv } from '../../env-utils'
 
 interface ClaudeActiveTurn {
   sessionId: string
@@ -125,6 +126,10 @@ export class ClaudeRuntime implements CodeAgentProviderRuntime {
       abortController: activeTurn.abortController,
       includePartialMessages: true,
       pathToClaudeCodeExecutable: config.claudeCodeBinaryPath,
+      // Pinned explicitly: the SDK default flipped between versions (isolation mode
+      // vs CLI parity). We require CLI parity so user-configured MCP servers and
+      // skills are visible in app sessions.
+      settingSources: ['user', 'project', 'local'],
       permissionMode: config.claudePermissionMode,
       allowDangerouslySkipPermissions: config.claudeAllowDangerouslySkipPermissions,
       systemPrompt: {
@@ -132,7 +137,7 @@ export class ClaudeRuntime implements CodeAgentProviderRuntime {
         preset: 'claude_code'
       },
       env: {
-        ...process.env,
+        ...sanitizedProcessEnv(),
         CLAUDE_AGENT_SDK_CLIENT_APP: 'open-science/0.1.0',
         ...(config.claudeConfigDir ? { CLAUDE_CONFIG_DIR: config.claudeConfigDir } : {})
       }
