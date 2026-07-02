@@ -365,3 +365,48 @@ export interface ListMcpServersResponse {
   servers: McpServerView[]
   warnings: string[]
 }
+
+export interface McpServerConfigInput {
+  type?: McpTransport
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+  url?: string
+  headers?: Record<string, string>
+}
+
+export interface AddMcpServerRequest {
+  provider: AgentProvider
+  name: string
+  config: McpServerConfigInput
+}
+
+export interface RemoveMcpServerRequest {
+  provider: AgentProvider
+  scope: McpScope
+  name: string
+  cwd?: string
+}
+
+export interface SetMcpServerEnabledRequest {
+  enabled: boolean
+}
+
+export interface MutateMcpServerResponse {
+  ok: boolean
+}
+
+export interface ImportMcpServersRequest {
+  json: string
+  providers: AgentProvider[]
+}
+
+export interface ImportMcpServersResponse {
+  added: string[]
+  skipped: string[]
+  errors: string[]
+}
+
+export interface McpOauthLoginResponse {
+  authorizationUrl: string
+}

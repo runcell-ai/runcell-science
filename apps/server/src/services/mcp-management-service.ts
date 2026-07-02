@@ -1,10 +1,15 @@
+import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { promisify } from 'node:util'
 
 import type {
+  AgentProvider,
+  ImportMcpServersResponse,
   ListMcpServersResponse,
   McpScope,
+  McpServerConfigInput,
   McpServerStatusKind,
   McpServerToolSummary,
   McpServerView,
@@ -16,6 +21,8 @@ import { sanitizedProcessEnv } from '../runtime/env-utils'
 import { CodexJsonRpcClient } from '../runtime/providers/codex/json-rpc-client'
 import type { ListMcpServerStatusResponse } from '../runtime/providers/codex/generated/v2/ListMcpServerStatusResponse'
 import type { ConfigReadResponse } from '../runtime/providers/codex/generated/v2/ConfigReadResponse'
+
+const execFileAsync = promisify(execFile)
 
 const INIT_TIMEOUT_MS = 60_000
 // mcpServerStatus/list blocks until all configured servers finish their
@@ -45,8 +52,66 @@ interface CodexStatusEntry {
   tools: McpServerToolSummary[]
 }
 
+export class McpManagementError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly statusCode: number
+  ) {
+    super(message)
+    this.name = 'McpManagementError'
+  }
+}
+
+// Names become codex config keyPath segments and shell arguments; keep them to
+// a charset that cannot smuggle dotted paths or quoting.
+const SERVER_NAME_PATTERN = /^[A-Za-z0-9_-]+$/
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function assertValidServerName(name: string): void {
+  if (!SERVER_NAME_PATTERN.test(name)) {
+    throw new McpManagementError(
+      'invalid_server_name',
+      'Server name may only contain letters, digits, hyphens, and underscores.',
+      400
+    )
+  }
+}
+
+function normalizeConfigInput(input: McpServerConfigInput): McpServerConfigInput {
+  const hasCommand = typeof input.command === 'string' && input.command.trim().length > 0
+  const hasUrl = typeof input.url === 'string' && input.url.trim().length > 0
+  if (hasCommand === hasUrl) {
+    throw new McpManagementError(
+      'invalid_server_config',
+      'Server config must provide exactly one of "command" or "url".',
+      400
+    )
+  }
+
+  const normalized: McpServerConfigInput = {}
+  if (hasCommand) {
+    normalized.type = 'stdio'
+    normalized.command = input.command!.trim()
+    normalized.args = Array.isArray(input.args) ? input.args.filter((a): a is string => typeof a === 'string') : []
+    if (isRecord(input.env)) {
+      normalized.env = Object.fromEntries(
+        Object.entries(input.env).filter(([, v]) => typeof v === 'string')
+      ) as Record<string, string>
+    }
+  } else {
+    normalized.type = input.type === 'sse' ? 'sse' : 'http'
+    normalized.url = input.url!.trim()
+    if (isRecord(input.headers)) {
+      normalized.headers = Object.fromEntries(
+        Object.entries(input.headers).filter(([, v]) => typeof v === 'string')
+      ) as Record<string, string>
+    }
+  }
+  return normalized
 }
 
 function inferTransport(entry: RawMcpServerEntry): McpTransport {
@@ -98,6 +163,154 @@ export class McpManagementService {
     this.client?.dispose()
     this.client = null
     this.clientInit = null
+  }
+
+  // --------------------------------------------------------------- writes --
+
+  async addServer(input: { provider: AgentProvider; name: string; config: McpServerConfigInput }): Promise<void> {
+    assertValidServerName(input.name)
+    const normalized = normalizeConfigInput(input.config)
+
+    if (input.provider === 'codex') {
+      if (normalized.type === 'sse') {
+        throw new McpManagementError('unsupported_transport', 'Codex does not support SSE MCP servers.', 400)
+      }
+      const value: Record<string, unknown> =
+        normalized.type === 'stdio'
+          ? {
+              command: normalized.command,
+              args: normalized.args ?? [],
+              ...(normalized.env && Object.keys(normalized.env).length > 0 ? { env: normalized.env } : {})
+            }
+          : {
+              url: normalized.url,
+              ...(normalized.headers && Object.keys(normalized.headers).length > 0
+                ? { http_headers: normalized.headers }
+                : {})
+            }
+      await this.codexRequest('config/value/write', {
+        keyPath: `mcp_servers.${input.name}`,
+        value,
+        mergeStrategy: 'upsert'
+      })
+      await this.reloadCodexMcpServers()
+      return
+    }
+
+    await this.execClaudeMcp(['add-json', '-s', 'user', input.name, JSON.stringify(normalized)])
+  }
+
+  async removeServer(input: { provider: AgentProvider; scope: McpScope; name: string; cwd?: string }): Promise<void> {
+    assertValidServerName(input.name)
+
+    if (input.provider === 'codex') {
+      await this.codexRequest('config/value/write', {
+        keyPath: `mcp_servers.${input.name}`,
+        value: null,
+        mergeStrategy: 'replace'
+      })
+      await this.reloadCodexMcpServers()
+      return
+    }
+
+    if ((input.scope === 'project' || input.scope === 'local') && !input.cwd) {
+      throw new McpManagementError(
+        'cwd_required',
+        `Removing a ${input.scope}-scope server requires the project working directory.`,
+        400
+      )
+    }
+    await this.execClaudeMcp(['remove', '-s', input.scope, input.name], input.cwd)
+  }
+
+  async setCodexServerEnabled(name: string, enabled: boolean): Promise<void> {
+    assertValidServerName(name)
+    await this.codexRequest('config/value/write', {
+      keyPath: `mcp_servers.${name}.enabled`,
+      value: enabled,
+      mergeStrategy: 'upsert'
+    })
+    await this.reloadCodexMcpServers()
+  }
+
+  async codexOauthLogin(name: string): Promise<{ authorizationUrl: string }> {
+    assertValidServerName(name)
+    const response = await this.codexRequest<{ authorizationUrl: string }>(
+      'mcpServer/oauth/login',
+      { name },
+      INIT_TIMEOUT_MS
+    )
+    return response
+  }
+
+  async importServers(input: { json: string; providers: AgentProvider[] }): Promise<ImportMcpServersResponse> {
+    if (input.providers.length === 0) {
+      throw new McpManagementError('no_target_providers', 'Pick at least one provider to import into.', 400)
+    }
+
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(input.json)
+    } catch {
+      throw new McpManagementError('invalid_json', 'The pasted content is not valid JSON.', 400)
+    }
+    if (!isRecord(parsed)) {
+      throw new McpManagementError('invalid_json', 'Expected a JSON object.', 400)
+    }
+
+    const serverMap = isRecord(parsed['mcpServers']) ? (parsed['mcpServers'] as Record<string, unknown>) : parsed
+    const entries = Object.entries(serverMap).filter(([, value]) => isRecord(value))
+    if (entries.length === 0) {
+      throw new McpManagementError(
+        'invalid_json',
+        'No MCP server entries found. Paste a {"mcpServers": {...}} snippet.',
+        400
+      )
+    }
+
+    const inventory = await this.listServers({})
+    const existing = new Set(inventory.servers.map((server) => `${server.provider}:${server.name}`))
+
+    const result: ImportMcpServersResponse = { added: [], skipped: [], errors: [] }
+    for (const [name, raw] of entries) {
+      for (const provider of input.providers) {
+        const key = `${provider}:${name}`
+        if (existing.has(key)) {
+          result.skipped.push(key)
+          continue
+        }
+        try {
+          await this.addServer({ provider, name, config: raw as McpServerConfigInput })
+          result.added.push(key)
+        } catch (error) {
+          result.errors.push(`${key}: ${error instanceof Error ? error.message : String(error)}`)
+        }
+      }
+    }
+    return result
+  }
+
+  private async reloadCodexMcpServers(): Promise<void> {
+    this.invalidateCodexStatus()
+    await this.codexRequest('config/mcpServer/reload', undefined, STATUS_TIMEOUT_MS)
+  }
+
+  private async execClaudeMcp(args: string[], cwd?: string): Promise<void> {
+    try {
+      await execFileAsync(config.claudeCodeBinaryPath, ['mcp', ...args], {
+        cwd,
+        env: process.env,
+        timeout: 30_000
+      })
+    } catch (error) {
+      const stderr = (error as { stderr?: string }).stderr
+      const message = typeof stderr === 'string' && stderr.trim().length > 0
+        ? stderr.trim().split('\n').slice(-1)[0]
+        : error instanceof Error
+          ? error.message
+          : String(error)
+      throw new McpManagementError('claude_cli_failed', `claude mcp ${args[0]} failed: ${message}`, 502)
+    }
   }
 
   // ---------------------------------------------------------------- codex --

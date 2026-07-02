@@ -695,3 +695,42 @@
   font-size: 12px;
   color: #b45309;
 }
+
+.connectors-toolbar {
+  gap: 8px;
+}
+
+.connectors-import {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md, 8px);
+}
+
+.connectors-import-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.connectors-import-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+
+.connectors-notice {
+  margin: 0;
+  font-size: 12px;
+  color: #15803d;
+  word-break: break-word;
+}
+
+.connector-actions {
+  display: flex;
+  gap: 6px;
+}

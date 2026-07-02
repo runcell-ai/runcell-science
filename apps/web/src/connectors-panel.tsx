@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ListMcpServersResponse, McpServerView } from '@open-science/contracts'
+import type { AgentProvider, ListMcpServersResponse, McpServerView } from '@open-science/contracts'
 import {
   Button,
   ScrollArea,
@@ -7,7 +7,8 @@ import {
   SheetContent,
   SheetDescription,
   SheetHeader,
-  SheetTitle
+  SheetTitle,
+  Textarea
 } from '@open-science/ui'
 import { api, toErrorMessage } from './lib/api'
 
@@ -40,6 +41,13 @@ export function ConnectorsPanel({ open, cwd, onOpenChange }: ConnectorsPanelProp
   const [data, setData] = useState<ListMcpServersResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [busyKey, setBusyKey] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  const [importOpen, setImportOpen] = useState(false)
+  const [importJson, setImportJson] = useState('')
+  const [importTargets, setImportTargets] = useState<AgentProvider[]>(['codex', 'claude'])
+  const [importing, setImporting] = useState(false)
 
   const load = useCallback(
     async (refresh: boolean) => {
@@ -59,9 +67,77 @@ export function ConnectorsPanel({ open, cwd, onOpenChange }: ConnectorsPanelProp
 
   useEffect(() => {
     if (open) {
+      setNotice(null)
       void load(false)
     }
   }, [open, load])
+
+  const runAction = async (key: string, action: () => Promise<void>) => {
+    setBusyKey(key)
+    setError(null)
+    setNotice(null)
+    try {
+      await action()
+      await load(false)
+    } catch (err) {
+      setError(toErrorMessage(err))
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  const removeServer = (server: McpServerView) =>
+    runAction(server.key, async () => {
+      await api.removeMcpServer({
+        provider: server.provider,
+        scope: server.scope,
+        name: server.name,
+        ...(cwd ? { cwd } : {})
+      })
+      setNotice(`Removed ${server.name}.`)
+    })
+
+  const toggleServer = (server: McpServerView) =>
+    runAction(server.key, async () => {
+      await api.setMcpServerEnabled(server.provider, server.name, !server.enabled)
+      setNotice(`${server.enabled ? 'Disabled' : 'Enabled'} ${server.name}.`)
+    })
+
+  const loginServer = (server: McpServerView) =>
+    runAction(server.key, async () => {
+      const { authorizationUrl } = await api.mcpOauthLogin(server.provider, server.name)
+      window.open(authorizationUrl, '_blank', 'noopener')
+      setNotice(`Opened authorization page for ${server.name}. Refresh after completing login.`)
+    })
+
+  const toggleImportTarget = (provider: AgentProvider) => {
+    setImportTargets((current) =>
+      current.includes(provider) ? current.filter((p) => p !== provider) : [...current, provider]
+    )
+  }
+
+  const submitImport = async () => {
+    setImporting(true)
+    setError(null)
+    setNotice(null)
+    try {
+      const result = await api.importMcpServers({ json: importJson, providers: importTargets })
+      const parts: string[] = []
+      if (result.added.length > 0) parts.push(`added ${result.added.join(', ')}`)
+      if (result.skipped.length > 0) parts.push(`skipped existing ${result.skipped.join(', ')}`)
+      if (result.errors.length > 0) parts.push(`errors: ${result.errors.join('; ')}`)
+      setNotice(`Import finished: ${parts.join(' · ') || 'nothing to do'}.`)
+      if (result.added.length > 0) {
+        setImportJson('')
+        setImportOpen(false)
+      }
+      await load(false)
+    } catch (err) {
+      setError(toErrorMessage(err))
+    } finally {
+      setImporting(false)
+    }
+  }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -74,12 +150,52 @@ export function ConnectorsPanel({ open, cwd, onOpenChange }: ConnectorsPanelProp
         </SheetHeader>
 
         <div className="connectors-toolbar">
+          <Button size="sm" variant="outline" onClick={() => setImportOpen((v) => !v)}>
+            {importOpen ? 'Close import' : 'Import JSON'}
+          </Button>
           <Button size="sm" variant="outline" disabled={loading} onClick={() => void load(true)}>
             {loading ? 'Refreshing…' : 'Refresh'}
           </Button>
         </div>
 
+        {importOpen ? (
+          <div className="connectors-import">
+            <Textarea
+              value={importJson}
+              placeholder='Paste a {"mcpServers": {...}} snippet'
+              rows={6}
+              onChange={(event) => setImportJson(event.target.value)}
+            />
+            <div className="connectors-import-row">
+              <label className="connectors-import-target">
+                <input
+                  type="checkbox"
+                  checked={importTargets.includes('codex')}
+                  onChange={() => toggleImportTarget('codex')}
+                />
+                Codex
+              </label>
+              <label className="connectors-import-target">
+                <input
+                  type="checkbox"
+                  checked={importTargets.includes('claude')}
+                  onChange={() => toggleImportTarget('claude')}
+                />
+                Claude Code
+              </label>
+              <Button
+                size="sm"
+                disabled={importing || importJson.trim().length === 0 || importTargets.length === 0}
+                onClick={() => void submitImport()}
+              >
+                {importing ? 'Importing…' : 'Import'}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
         {error ? <p className="connectors-error">{error}</p> : null}
+        {notice ? <p className="connectors-notice">{notice}</p> : null}
         {data?.warnings.map((warning) => (
           <p key={warning} className="connectors-warning">
             {warning}
@@ -88,26 +204,44 @@ export function ConnectorsPanel({ open, cwd, onOpenChange }: ConnectorsPanelProp
 
         <ScrollArea className="connectors-list">
           {data && data.servers.length === 0 && !loading ? (
-            <p className="connectors-empty">No MCP servers configured yet.</p>
+            <p className="connectors-empty">No MCP servers configured yet. Paste a JSON snippet to add one.</p>
           ) : null}
-          {data?.servers.map((server) => (
-            <div key={server.key} className="connector-row">
-              <div className="connector-row-main">
-                <span className="connector-name">{server.name}</span>
-                <span className={`connector-status connector-status-${server.status}`}>
-                  {statusLabels[server.status]}
-                </span>
+          {data?.servers.map((server) => {
+            const busy = busyKey === server.key
+            return (
+              <div key={server.key} className="connector-row">
+                <div className="connector-row-main">
+                  <span className="connector-name">{server.name}</span>
+                  <span className={`connector-status connector-status-${server.status}`}>
+                    {statusLabels[server.status]}
+                  </span>
+                </div>
+                <div className="connector-row-meta">
+                  <span className="connector-chip">{server.provider === 'codex' ? 'Codex' : 'Claude Code'}</span>
+                  <span className="connector-chip">{server.scope}</span>
+                  <span className="connector-chip">{server.transport}</span>
+                  {server.tools.length > 0 ? <span className="connector-chip">{server.tools.length} tools</span> : null}
+                </div>
+                {connectorTarget(server) ? <p className="connector-target">{connectorTarget(server)}</p> : null}
+                {server.statusDetail ? <p className="connector-detail">{server.statusDetail}</p> : null}
+                <div className="connector-actions">
+                  {server.provider === 'codex' ? (
+                    <Button size="sm" variant="outline" disabled={busy} onClick={() => void toggleServer(server)}>
+                      {server.enabled ? 'Disable' : 'Enable'}
+                    </Button>
+                  ) : null}
+                  {server.provider === 'codex' && server.status === 'needs_auth' ? (
+                    <Button size="sm" variant="outline" disabled={busy} onClick={() => void loginServer(server)}>
+                      Log in
+                    </Button>
+                  ) : null}
+                  <Button size="sm" variant="ghost" disabled={busy} onClick={() => void removeServer(server)}>
+                    {busy ? 'Working…' : 'Remove'}
+                  </Button>
+                </div>
               </div>
-              <div className="connector-row-meta">
-                <span className="connector-chip">{server.provider === 'codex' ? 'Codex' : 'Claude Code'}</span>
-                <span className="connector-chip">{server.scope}</span>
-                <span className="connector-chip">{server.transport}</span>
-                {server.tools.length > 0 ? <span className="connector-chip">{server.tools.length} tools</span> : null}
-              </div>
-              {connectorTarget(server) ? <p className="connector-target">{connectorTarget(server)}</p> : null}
-              {server.statusDetail ? <p className="connector-detail">{server.statusDetail}</p> : null}
-            </div>
-          ))}
+            )
+          })}
         </ScrollArea>
       </SheetContent>
     </Sheet>

@@ -8,8 +8,14 @@ import type {
   CreateAgentSessionResponse,
   CreateAgentTurnResponse,
   InterruptAgentSessionResponse,
+  AddMcpServerRequest,
+  ImportMcpServersRequest,
+  ImportMcpServersResponse,
   ListAgentSessionsResponse,
   ListMcpServersResponse,
+  McpOauthLoginResponse,
+  MutateMcpServerResponse,
+  RemoveMcpServerRequest,
   ResolveAgentRequestResponse
 } from '@open-science/contracts'
 
@@ -81,6 +87,36 @@ export const api = {
 
   getWorktreeDiff: (sessionId: string) =>
     requestJson<AgentSessionWorktreeDiffResponse>(`/api/sessions/${sessionId}/worktree-diff`),
+
+  addMcpServer: (input: AddMcpServerRequest) =>
+    requestJson<MutateMcpServerResponse>('/api/mcp/servers', {
+      method: 'POST',
+      body: JSON.stringify(input)
+    }),
+
+  removeMcpServer: (input: RemoveMcpServerRequest) =>
+    requestJson<MutateMcpServerResponse>('/api/mcp/servers/remove', {
+      method: 'POST',
+      body: JSON.stringify(input)
+    }),
+
+  setMcpServerEnabled: (provider: string, name: string, enabled: boolean) =>
+    requestJson<MutateMcpServerResponse>(`/api/mcp/servers/${provider}/${encodeURIComponent(name)}/enabled`, {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled })
+    }),
+
+  mcpOauthLogin: (provider: string, name: string) =>
+    requestJson<McpOauthLoginResponse>(`/api/mcp/servers/${provider}/${encodeURIComponent(name)}/login`, {
+      method: 'POST',
+      body: JSON.stringify({})
+    }),
+
+  importMcpServers: (input: ImportMcpServersRequest) =>
+    requestJson<ImportMcpServersResponse>('/api/mcp/import', {
+      method: 'POST',
+      body: JSON.stringify(input)
+    }),
 
   listMcpServers: (input?: { cwd?: string; refresh?: boolean }) => {
     const params = new URLSearchParams()
