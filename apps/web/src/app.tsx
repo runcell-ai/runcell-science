@@ -163,6 +163,7 @@ function App() {
                   provider={workspace.detail.session.provider}
                   cwd={workspace.detail.session.cwd}
                   disabledServers={workspace.detail.session.disabledMcpServers}
+                  running={workspace.running}
                 />
               </div>
             ) : null}

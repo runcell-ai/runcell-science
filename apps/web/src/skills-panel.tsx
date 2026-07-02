@@ -65,10 +65,14 @@ export function SkillsPanel({ open, cwd, sessionId, onOpenChange }: SkillsPanelP
   }, [open, load])
 
   const toggleSkill = async (skill: SkillView) => {
-    setBusyName(skill.name)
+    const busyKey = skill.path ?? skill.name
+    setBusyName(busyKey)
     setError(null)
     try {
-      await api.setSkillEnabled(skill.name, !skill.enabled)
+      // Prefer the path selector: codex applies name selectors to every
+      // same-named skill across scopes, which would toggle more rows than
+      // the one the user clicked.
+      await api.setSkillEnabled(skill.path ? { path: skill.path } : { name: skill.name }, !skill.enabled)
       setNotice(`${skill.enabled ? 'Disabled' : 'Enabled'} ${skill.name}.`)
       await load(true)
     } catch (err) {
@@ -219,10 +223,10 @@ export function SkillsPanel({ open, cwd, sessionId, onOpenChange }: SkillsPanelP
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={busyName === skill.name}
+                    disabled={busyName === (skill.path ?? skill.name)}
                     onClick={() => void toggleSkill(skill)}
                   >
-                    {busyName === skill.name ? 'Working…' : skill.enabled ? 'Disable' : 'Enable'}
+                    {busyName === (skill.path ?? skill.name) ? 'Working…' : skill.enabled ? 'Disable' : 'Enable'}
                   </Button>
                 </div>
               ) : null}

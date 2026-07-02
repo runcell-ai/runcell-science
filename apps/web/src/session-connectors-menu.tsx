@@ -8,9 +8,10 @@ type SessionConnectorsMenuProps = {
   provider: AgentProvider
   cwd: string
   disabledServers: string[]
+  running: boolean
 }
 
-export function SessionConnectorsMenu({ sessionId, provider, cwd, disabledServers }: SessionConnectorsMenuProps) {
+export function SessionConnectorsMenu({ sessionId, provider, cwd, disabledServers, running }: SessionConnectorsMenuProps) {
   const [open, setOpen] = useState(false)
   const [servers, setServers] = useState<McpServerView[]>([])
   const [disabled, setDisabled] = useState<string[]>(disabledServers)
@@ -42,6 +43,12 @@ export function SessionConnectorsMenu({ sessionId, provider, cwd, disabledServer
   }, [open, loadServers])
 
   useEffect(() => {
+    if (running) {
+      setOpen(false)
+    }
+  }, [running])
+
+  useEffect(() => {
     if (!open) {
       return
     }
@@ -71,7 +78,7 @@ export function SessionConnectorsMenu({ sessionId, provider, cwd, disabledServer
 
   return (
     <div className="session-connectors" ref={containerRef}>
-      <Button size="sm" variant="outline" onClick={() => setOpen((v) => !v)}>
+      <Button size="sm" variant="outline" disabled={running} onClick={() => setOpen((v) => !v)}>
         Connectors{servers.length > 0 ? ` ${activeCount}/${servers.length}` : ''}
       </Button>
       {open ? (

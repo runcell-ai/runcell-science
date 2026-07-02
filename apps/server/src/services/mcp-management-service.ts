@@ -299,7 +299,10 @@ export class McpManagementService {
     try {
       await execFileAsync(config.claudeCodeBinaryPath, ['mcp', ...args], {
         cwd,
-        env: process.env,
+        env: {
+          ...sanitizedProcessEnv(),
+          ...(config.claudeConfigDir ? { CLAUDE_CONFIG_DIR: config.claudeConfigDir } : {})
+        },
         timeout: 30_000
       })
     } catch (error) {
@@ -495,19 +498,20 @@ export class McpManagementService {
 
     try {
       const configPath = this.claudeConfigJsonPath()
+      let claudeJson: Record<string, unknown> | null = null
       if (fs.existsSync(configPath)) {
-        const claudeJson = JSON.parse(fs.readFileSync(configPath, 'utf8')) as Record<string, unknown>
+        claudeJson = JSON.parse(fs.readFileSync(configPath, 'utf8')) as Record<string, unknown>
         collect(claudeJson['mcpServers'])
-        if (cwd) {
-          const mcpJsonPath = path.join(cwd, '.mcp.json')
-          if (fs.existsSync(mcpJsonPath)) {
-            const parsed = JSON.parse(fs.readFileSync(mcpJsonPath, 'utf8')) as Record<string, unknown>
-            collect(parsed['mcpServers'])
-          }
-          const projects = claudeJson['projects']
-          if (isRecord(projects) && isRecord(projects[cwd])) {
-            collect((projects[cwd] as Record<string, unknown>)['mcpServers'])
-          }
+      }
+      if (cwd) {
+        const mcpJsonPath = path.join(cwd, '.mcp.json')
+        if (fs.existsSync(mcpJsonPath)) {
+          const parsed = JSON.parse(fs.readFileSync(mcpJsonPath, 'utf8')) as Record<string, unknown>
+          collect(parsed['mcpServers'])
+        }
+        const projects = claudeJson?.['projects']
+        if (isRecord(projects) && isRecord(projects[cwd])) {
+          collect((projects[cwd] as Record<string, unknown>)['mcpServers'])
         }
       }
     } catch {

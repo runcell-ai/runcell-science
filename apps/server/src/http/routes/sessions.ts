@@ -875,6 +875,24 @@ export const sessionsRoute: FastifyPluginAsync = async (server) => {
     const disabledServers = body.disabledServers.filter((entry): entry is string => typeof entry === 'string')
 
     try {
+      const current = agentSessionService.getSessionDetail(params.sessionId)
+      if (!current) {
+        return reply.code(404).send({
+          error: { code: 'not_found', message: 'Session was not found.' }
+        } satisfies ApiErrorResponse)
+      }
+      // Codex applies the selection by disposing and respawning the
+      // app-server; doing that mid-turn would strand the running turn.
+      const hasRunningTurn = current.turns.some((turn) => turn.status === 'running')
+      if (current.session.provider === 'codex' && hasRunningTurn) {
+        return reply.code(409).send({
+          error: {
+            code: 'turn_running',
+            message: 'Cannot change connectors while a turn is running. Wait for it to finish.'
+          }
+        } satisfies ApiErrorResponse)
+      }
+
       const detail = agentSessionService.updateDisabledMcpServers(params.sessionId, disabledServers)
       // Codex keeps a long-lived app-server per session whose overrides are
       // set at spawn; drop it so the next turn respawns and resumes the

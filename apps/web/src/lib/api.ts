@@ -135,10 +135,10 @@ export const api = {
       body: JSON.stringify(input)
     }),
 
-  setSkillEnabled: (name: string, enabled: boolean) =>
+  setSkillEnabled: (selector: { name?: string; path?: string }, enabled: boolean) =>
     requestJson<MutateMcpServerResponse>('/api/skills/codex/enabled', {
       method: 'PATCH',
-      body: JSON.stringify({ name, enabled })
+      body: JSON.stringify({ ...selector, enabled })
     }),
 
   listMcpServers: (input?: { cwd?: string; refresh?: boolean }) => {
