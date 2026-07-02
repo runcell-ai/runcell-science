@@ -333,3 +333,35 @@ export interface ApiErrorResponse {
     message: string
   }
 }
+
+export type McpTransport = 'stdio' | 'http' | 'sse'
+
+export type McpScope = 'user' | 'project' | 'local'
+
+export type McpServerStatusKind = 'connected' | 'failed' | 'needs_auth' | 'pending' | 'disabled' | 'unknown'
+
+export interface McpServerToolSummary {
+  name: string
+  description: string | null
+}
+
+export interface McpServerView {
+  key: string
+  name: string
+  provider: AgentProvider
+  scope: McpScope
+  transport: McpTransport
+  command: string | null
+  args: string[]
+  url: string | null
+  enabled: boolean
+  status: McpServerStatusKind
+  statusDetail: string | null
+  tools: McpServerToolSummary[]
+  source: string
+}
+
+export interface ListMcpServersResponse {
+  servers: McpServerView[]
+  warnings: string[]
+}

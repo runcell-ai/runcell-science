@@ -7,6 +7,7 @@ import {
   AgentRuntimeConfig,
   AgentSessionSidebar,
   AgentTimeline,
+  Button,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
@@ -16,6 +17,7 @@ import {
 } from '@open-science/ui'
 import type { AgentProviderOption } from '@open-science/ui'
 import { ArtifactsPanel } from './artifacts-panel'
+import { ConnectorsPanel } from './connectors-panel'
 import { WorktreeDiffPanel } from './worktree-diff-panel'
 import { useIsNarrow } from './hooks/use-is-narrow'
 import { useSessionList } from './hooks/use-session-list'
@@ -34,6 +36,7 @@ function App() {
   const isNarrow = useIsNarrow()
   const [provider, setProvider] = useState<AgentProvider>('codex')
   const [cwd, setCwd] = useState(readStoredCwd)
+  const [connectorsOpen, setConnectorsOpen] = useState(false)
 
   const workspace = useWorkspace()
   const sessionList = useSessionList(workspace.reportError)
@@ -68,6 +71,16 @@ function App() {
               onStartDraft={workspace.startDraft}
               onOpenSession={(sessionId) => void workspace.openSession(sessionId)}
             />
+            <div className="sidebar-footer">
+              <Button
+                variant="outline"
+                size="sm"
+                className="sidebar-footer-button"
+                onClick={() => setConnectorsOpen(true)}
+              >
+                Connectors
+              </Button>
+            </div>
           </ResizablePanel>
 
           <ResizableHandle withHandle />
@@ -163,6 +176,12 @@ function App() {
             </>
           ) : null}
         </ResizablePanelGroup>
+
+        <ConnectorsPanel
+          open={connectorsOpen}
+          cwd={workspace.detail?.session.cwd ?? (cwd.trim().length > 0 ? cwd : null)}
+          onOpenChange={setConnectorsOpen}
+        />
       </div>
     </TooltipProvider>
   )

@@ -9,6 +9,7 @@ import type {
   CreateAgentTurnResponse,
   InterruptAgentSessionResponse,
   ListAgentSessionsResponse,
+  ListMcpServersResponse,
   ResolveAgentRequestResponse
 } from '@open-science/contracts'
 
@@ -80,6 +81,14 @@ export const api = {
 
   getWorktreeDiff: (sessionId: string) =>
     requestJson<AgentSessionWorktreeDiffResponse>(`/api/sessions/${sessionId}/worktree-diff`),
+
+  listMcpServers: (input?: { cwd?: string; refresh?: boolean }) => {
+    const params = new URLSearchParams()
+    if (input?.cwd) params.set('cwd', input.cwd)
+    if (input?.refresh) params.set('refresh', 'true')
+    const query = params.toString()
+    return requestJson<ListMcpServersResponse>(`/api/mcp/servers${query ? `?${query}` : ''}`)
+  },
 
   sessionEventsUrl: (sessionId: string) => apiUrl(`/api/sessions/${sessionId}/events`)
 }

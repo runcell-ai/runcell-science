@@ -587,3 +587,111 @@
     flex-wrap: wrap;
   }
 }
+
+.sidebar-footer {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+}
+
+.sidebar-footer-button {
+  width: 100%;
+}
+
+.connectors-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 420px;
+  max-width: 92vw;
+  padding: 18px;
+}
+
+.connectors-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.connectors-error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--destructive, #b91c1c);
+}
+
+.connectors-warning {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.connectors-empty {
+  margin: 12px 0;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+
+.connectors-list {
+  flex: 1;
+  min-height: 0;
+}
+
+.connector-row {
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.connector-row-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.connector-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.connector-status {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.connector-status-connected {
+  color: #15803d;
+}
+
+.connector-status-failed,
+.connector-status-needs_auth {
+  color: #b45309;
+}
+
+.connector-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.connector-chip {
+  font-size: 11px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted-foreground);
+}
+
+.connector-target {
+  margin: 0;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--muted-foreground);
+  word-break: break-all;
+}
+
+.connector-detail {
+  margin: 0;
+  font-size: 12px;
+  color: #b45309;
+}
