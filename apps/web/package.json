@@ -8,9 +8,11 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "tsx --test \"test/**/*.test.ts\""
   },
   "dependencies": {
+    "@jupyterlab/services": "7.6.1",
     "@open-science/contracts": "workspace:*",
     "@open-science/ui": "workspace:*",
     "anser": "^2.3.5",
@@ -35,6 +37,7 @@
     "oxlint": "^1.71.0",
     "postcss": "^8.5.1",
     "tailwindcss": "^4.0.0",
+    "tsx": "^4.20.3",
     "typescript": "~6.0.2",
     "vite": "^8.1.1"
   }

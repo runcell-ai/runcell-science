@@ -67,6 +67,7 @@ type PreviewModel = {
   render: 'image' | 'markdown' | 'text' | 'notebook' | 'embed' | 'none'
   src: string | null
   external: string | null
+  filePath?: string
   fetchText?: () => Promise<string>
 }
 
@@ -329,7 +330,7 @@ function modelForFile(apiBaseUrl: string, sessionId: string, file: WorkspaceFile
     return { ...base, render: 'markdown', src: raw, external: raw, fetchText }
   }
   if (file.kind === 'notebook') {
-    return { ...base, render: 'notebook', src: raw, external: raw, fetchText }
+    return { ...base, render: 'notebook', src: raw, external: raw, filePath: file.path, fetchText }
   }
   if (file.kind === 'text') {
     return { ...base, render: 'text', src: raw, external: raw, fetchText }
@@ -340,8 +341,47 @@ function modelForFile(apiBaseUrl: string, sessionId: string, file: WorkspaceFile
   return { ...base, render: 'none', src: null, external: raw }
 }
 
-function PreviewSurface({ model, reloadNonce }: { model: PreviewModel; reloadNonce: number }) {
+function PreviewSurface({
+  model,
+  reloadNonce,
+  apiBaseUrl,
+  sessionId,
+  running
+}: {
+  model: PreviewModel
+  reloadNonce: number
+  apiBaseUrl: string
+  sessionId: string
+  running: boolean
+}) {
   const [textState, setTextState] = useState<TextState | null>(null)
+  const [effectiveReloadNonce, setEffectiveReloadNonce] = useState(reloadNonce)
+  const [manualReloadNonce, setManualReloadNonce] = useState(0)
+  const [notebookExecuting, setNotebookExecuting] = useState(false)
+  const pendingReloadNonce = useRef<number | null>(null)
+  const textKey = useRef<string | null>(null)
+
+  useEffect(() => {
+    setNotebookExecuting(false)
+    pendingReloadNonce.current = null
+    setEffectiveReloadNonce(reloadNonce)
+  }, [model.key])
+
+  useEffect(() => {
+    if (model.render === 'notebook' && notebookExecuting) {
+      pendingReloadNonce.current = reloadNonce
+      return
+    }
+    setEffectiveReloadNonce(reloadNonce)
+  }, [model.render, notebookExecuting, reloadNonce])
+
+  const onNotebookExecutingChange = useCallback((executing: boolean) => {
+    setNotebookExecuting(executing)
+    if (!executing && pendingReloadNonce.current !== null) {
+      setEffectiveReloadNonce(pendingReloadNonce.current)
+      pendingReloadNonce.current = null
+    }
+  }, [])
 
   const fetchText = model.fetchText
   // reloadNonce is bumped when an agent turn ends so text-based previews
@@ -349,23 +389,36 @@ function PreviewSurface({ model, reloadNonce }: { model: PreviewModel; reloadNon
   useEffect(() => {
     if (!fetchText) {
       setTextState(null)
+      textKey.current = null
       return
     }
     const controller = new AbortController()
-    setTextState({ status: 'loading' })
+    const sameKey = textKey.current === model.key
+    setTextState((current) => {
+      if (sameKey && current?.status === 'ready') {
+        return current
+      }
+      return { status: 'loading' }
+    })
     fetchText()
       .then((content) => {
         if (!controller.signal.aborted) {
+          textKey.current = model.key
           setTextState({ status: 'ready', content })
         }
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
-          setTextState({ status: 'error', message: error instanceof Error ? error.message : String(error) })
+          setTextState((current) => {
+            if (sameKey && current?.status === 'ready') {
+              return current
+            }
+            return { status: 'error', message: error instanceof Error ? error.message : String(error) }
+          })
         }
       })
     return () => controller.abort()
-  }, [fetchText, model.key, reloadNonce])
+  }, [fetchText, model.key, effectiveReloadNonce, manualReloadNonce])
 
   if (model.render === 'image' && model.src) {
     return (
@@ -410,7 +463,15 @@ function PreviewSurface({ model, reloadNonce }: { model: PreviewModel; reloadNon
               </div>
             }
           >
-            <NotebookViewer content={textState.content} />
+            <NotebookViewer
+              content={textState.content}
+              apiBaseUrl={model.filePath ? apiBaseUrl : undefined}
+              sessionId={model.filePath ? sessionId : undefined}
+              filePath={model.filePath}
+              running={running}
+              onExecutingChange={onNotebookExecutingChange}
+              onRequestReload={() => setManualReloadNonce((nonce) => nonce + 1)}
+            />
           </Suspense>
         </div>
       )
@@ -626,7 +687,13 @@ function ArtifactsPanel({
           </div>
         </header>
         <div className="side-panel-body">
-          <PreviewSurface model={preview} reloadNonce={reloadNonce} />
+          <PreviewSurface
+            model={preview}
+            reloadNonce={reloadNonce}
+            apiBaseUrl={apiBaseUrl}
+            sessionId={sessionId}
+            running={running}
+          />
         </div>
       </aside>
     )
