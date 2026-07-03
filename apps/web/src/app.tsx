@@ -192,6 +192,7 @@ function App() {
                     activeArtifactId={workspace.activeArtifactId}
                     draft={workspace.artifactDraft}
                     creating={workspace.isCreatingArtifact}
+                    running={workspace.running}
                     onDraftChange={workspace.setArtifactDraft}
                     onCreate={(value) => void workspace.createArtifact(value)}
                     onSelectArtifact={workspace.selectArtifact}

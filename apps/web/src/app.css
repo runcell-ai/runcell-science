@@ -850,3 +850,144 @@
   font-size: 11px;
   color: var(--muted-foreground);
 }
+
+/* Notebook (.ipynb) read-only preview */
+
+.nb-frame {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.nb-root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.nb-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.nb-markdown {
+  padding: 0 4px;
+}
+
+.nb-source-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.nb-exec-count {
+  flex: none;
+  min-width: 34px;
+  padding-top: 9px;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: right;
+  white-space: pre;
+}
+
+.nb-source {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--muted);
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.nb-cell-raw .nb-source {
+  background: var(--surface);
+  color: var(--muted-foreground);
+}
+
+.nb-outputs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-left: 42px;
+  min-width: 0;
+}
+
+.nb-output-text {
+  margin: 0;
+  padding: 6px 10px;
+  overflow-x: auto;
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.nb-output-stderr {
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--destructive), transparent 92%);
+}
+
+.nb-output-error {
+  border-left: 3px solid var(--destructive);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--destructive), transparent 94%);
+}
+
+.nb-output-media img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.nb-output-html {
+  overflow-x: auto;
+  font-size: 13px;
+}
+
+.nb-output-html table {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.nb-output-html th,
+.nb-output-html td {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  text-align: right;
+  font-family: var(--font-mono);
+}
+
+.nb-output-html th {
+  background: var(--muted);
+  font-weight: 600;
+}
+
+.nb-output-unsupported,
+.nb-parse-error {
+  padding: 8px 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.nb-parse-error {
+  margin: 16px 16px 0;
+  border-color: color-mix(in oklch, var(--destructive), var(--border) 40%);
+  color: var(--destructive);
+}

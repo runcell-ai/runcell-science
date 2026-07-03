@@ -245,7 +245,7 @@ export interface AgentArtifactMarkdownContentResponse {
  * artifacts are files the agent chose to highlight, workspace files are
  * everything else the user can still open.
  */
-export type WorkspaceFileKind = 'image' | 'pdf' | 'markdown' | 'html' | 'text' | 'other'
+export type WorkspaceFileKind = 'image' | 'pdf' | 'markdown' | 'html' | 'notebook' | 'text' | 'other'
 
 export interface WorkspaceFile {
   /** Path relative to the session cwd, using forward slashes. */

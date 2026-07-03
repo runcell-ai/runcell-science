@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, FormEvent, ReactNode } from 'react'
 import {
   ArrowLeft,
@@ -12,6 +12,7 @@ import {
   Globe2,
   Image as ImageIcon,
   Loader2,
+  NotebookText,
   Plus,
   RefreshCw,
   Search,
@@ -28,6 +29,8 @@ import type {
 } from '@open-science/contracts'
 import { Button, Input, ScrollArea } from '@open-science/ui'
 
+const NotebookViewer = lazy(() => import('./notebook/notebook-viewer'))
+
 type ArtifactsPanelProps = {
   apiBaseUrl: string
   sessionId: string
@@ -35,6 +38,8 @@ type ArtifactsPanelProps = {
   activeArtifactId: string | null
   draft: string
   creating: boolean
+  /** Whether an agent turn is currently running; previews reload when it ends. */
+  running: boolean
   onDraftChange: (value: string) => void
   onCreate: (value: string) => void
   onSelectArtifact: (id: string | null) => void
@@ -59,7 +64,7 @@ type PreviewModel = {
   title: string
   subtitle: string
   icon: ReactNode
-  render: 'image' | 'markdown' | 'text' | 'embed' | 'none'
+  render: 'image' | 'markdown' | 'text' | 'notebook' | 'embed' | 'none'
   src: string | null
   external: string | null
   fetchText?: () => Promise<string>
@@ -229,6 +234,9 @@ function iconForFileName(name: string, kind: WorkspaceFileKind | 'url'): ReactNo
   if (kind === 'html') {
     return <FileCode />
   }
+  if (kind === 'notebook') {
+    return <NotebookText />
+  }
   if (dataExtensions.has(extensionOf(name))) {
     return <SheetIcon />
   }
@@ -320,6 +328,9 @@ function modelForFile(apiBaseUrl: string, sessionId: string, file: WorkspaceFile
   if (file.kind === 'markdown') {
     return { ...base, render: 'markdown', src: raw, external: raw, fetchText }
   }
+  if (file.kind === 'notebook') {
+    return { ...base, render: 'notebook', src: raw, external: raw, fetchText }
+  }
   if (file.kind === 'text') {
     return { ...base, render: 'text', src: raw, external: raw, fetchText }
   }
@@ -329,10 +340,12 @@ function modelForFile(apiBaseUrl: string, sessionId: string, file: WorkspaceFile
   return { ...base, render: 'none', src: null, external: raw }
 }
 
-function PreviewSurface({ model }: { model: PreviewModel }) {
+function PreviewSurface({ model, reloadNonce }: { model: PreviewModel; reloadNonce: number }) {
   const [textState, setTextState] = useState<TextState | null>(null)
 
   const fetchText = model.fetchText
+  // reloadNonce is bumped when an agent turn ends so text-based previews
+  // (notebooks especially) pick up files the agent just modified.
   useEffect(() => {
     if (!fetchText) {
       setTextState(null)
@@ -352,7 +365,7 @@ function PreviewSurface({ model }: { model: PreviewModel }) {
         }
       })
     return () => controller.abort()
-  }, [fetchText, model.key])
+  }, [fetchText, model.key, reloadNonce])
 
   if (model.render === 'image' && model.src) {
     return (
@@ -374,7 +387,7 @@ function PreviewSurface({ model }: { model: PreviewModel }) {
     )
   }
 
-  if (model.render === 'markdown' || model.render === 'text') {
+  if (model.render === 'markdown' || model.render === 'text' || model.render === 'notebook') {
     if (!textState || textState.status === 'loading') {
       return (
         <div className="side-panel-loading">
@@ -385,6 +398,22 @@ function PreviewSurface({ model }: { model: PreviewModel }) {
     }
     if (textState.status === 'error') {
       return <div className="side-panel-empty">{textState.message}</div>
+    }
+    if (model.render === 'notebook') {
+      return (
+        <div className="nb-frame">
+          <Suspense
+            fallback={
+              <div className="side-panel-loading">
+                <Loader2 className="spin-icon" />
+                Loading
+              </div>
+            }
+          >
+            <NotebookViewer content={textState.content} />
+          </Suspense>
+        </div>
+      )
     }
     if (model.render === 'markdown') {
       return (
@@ -424,6 +453,7 @@ function ArtifactsPanel({
   activeArtifactId,
   draft,
   creating,
+  running,
   onDraftChange,
   onCreate,
   onSelectArtifact,
@@ -434,6 +464,8 @@ function ArtifactsPanel({
   const [selectedFile, setSelectedFile] = useState<WorkspaceFile | null>(null)
   const [workspace, setWorkspace] = useState<WorkspaceState>({ status: 'idle' })
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set())
+  const [reloadNonce, setReloadNonce] = useState(0)
+  const wasRunning = useRef(running)
 
   const loadWorkspace = useCallback(async () => {
     setWorkspace({ status: 'loading' })
@@ -465,6 +497,16 @@ function ArtifactsPanel({
       setSelectedFile(null)
     }
   }, [activeArtifactId])
+
+  // A finished agent turn may have created or modified workspace files, so
+  // refresh the listing and any open text-based preview on the falling edge.
+  useEffect(() => {
+    if (wasRunning.current && !running) {
+      setReloadNonce((nonce) => nonce + 1)
+      void loadWorkspace()
+    }
+    wasRunning.current = running
+  }, [running, loadWorkspace])
 
   const activeArtifact = useMemo(
     () => artifacts.find((artifact) => artifact.id === activeArtifactId) ?? null,
@@ -584,7 +626,7 @@ function ArtifactsPanel({
           </div>
         </header>
         <div className="side-panel-body">
-          <PreviewSurface model={preview} />
+          <PreviewSurface model={preview} reloadNonce={reloadNonce} />
         </div>
       </aside>
     )

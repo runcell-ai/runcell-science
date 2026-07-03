@@ -52,7 +52,6 @@ const textExtensions = new Set([
   '.cfg',
   '.env',
   '.py',
-  '.ipynb',
   '.r',
   '.rmd',
   '.jl',
@@ -109,6 +108,9 @@ export function classifyWorkspaceFile(filePath: string): WorkspaceFileKind {
   }
   if (extension === '.html' || extension === '.htm') {
     return 'html'
+  }
+  if (extension === '.ipynb') {
+    return 'notebook'
   }
   if (textExtensions.has(extension)) {
     return 'text'

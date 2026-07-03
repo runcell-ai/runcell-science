@@ -42,6 +42,7 @@ const artifactContentTypes: Record<string, string> = {
   '.gif': 'image/gif',
   '.htm': 'text/html; charset=utf-8',
   '.html': 'text/html; charset=utf-8',
+  '.ipynb': 'application/json; charset=utf-8',
   '.jpeg': 'image/jpeg',
   '.jpg': 'image/jpeg',
   '.markdown': 'text/markdown; charset=utf-8',

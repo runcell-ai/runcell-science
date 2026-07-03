@@ -13,10 +13,16 @@
   "dependencies": {
     "@open-science/contracts": "workspace:*",
     "@open-science/ui": "workspace:*",
+    "anser": "^2.3.5",
+    "dompurify": "^3.4.11",
+    "katex": "^0.16.0",
     "lucide-react": "^0.520.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-markdown": "^10.1.0"
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",
