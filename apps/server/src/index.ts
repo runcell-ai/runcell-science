@@ -3,6 +3,7 @@ import { createServer } from './http'
 import { closeDb } from './db/connection'
 import { runMigrations } from './db/migrate'
 import { runtimeRegistry } from './runtime'
+import { jupyterServerManager } from './services'
 
 async function bootstrap(): Promise<void> {
   ensureRuntimeDirs()
@@ -11,6 +12,7 @@ async function bootstrap(): Promise<void> {
   const server = createServer()
 
   const closeHooks = async () => {
+    await jupyterServerManager.disposeAll()
     await runtimeRegistry.dispose()
     await server.close()
     closeDb()

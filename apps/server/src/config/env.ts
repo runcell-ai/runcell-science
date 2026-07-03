@@ -15,8 +15,10 @@ export interface ServerConfig {
   migrationDir: string
   nodeEnv: string
   logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent'
+  webOrigin: string
   agentDefaultCwd: string
   agentDefaultRuntimeMode: AgentRuntimeMode
+  jupyterPythonPath: string | undefined
   codexBinaryPath: string
   codexHome: string | null
   codexDefaultModel: string | null
@@ -114,8 +116,10 @@ export const config: ServerConfig = {
     resolveWorkspacePath(process.env.MIGRATION_DIR) ?? path.join(workspaceRoot, 'apps/server/src/db/migrations'),
   nodeEnv: process.env.NODE_ENV ?? 'development',
   logLevel: resolveLogLevel(process.env.LOG_LEVEL),
+  webOrigin: process.env.WEB_ORIGIN?.trim() || 'http://localhost:27183',
   agentDefaultCwd: resolveWorkspacePath(process.env.AGENT_DEFAULT_CWD) ?? workspaceRoot,
   agentDefaultRuntimeMode: resolveRuntimeMode(process.env.AGENT_DEFAULT_RUNTIME_MODE),
+  jupyterPythonPath: process.env.JUPYTER_PYTHON?.trim() || undefined,
   codexBinaryPath: process.env.CODEX_BINARY_PATH?.trim() || 'codex',
   codexHome: resolveWorkspacePath(process.env.CODEX_HOME) ?? null,
   codexDefaultModel: process.env.CODEX_DEFAULT_MODEL?.trim() || null,

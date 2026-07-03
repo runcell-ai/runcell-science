@@ -332,7 +332,28 @@ export interface ApiErrorResponse {
   error: {
     code: string
     message: string
+    details?: unknown
   }
+}
+
+export interface JupyterPythonEnvStatus {
+  /** Absolute path of the python interpreter the manager would use, or null if none found. */
+  pythonPath: string | null
+  hasJupyterServer: boolean
+  hasIpykernel: boolean
+}
+
+export interface JupyterServerStatusResponse {
+  python: JupyterPythonEnvStatus
+  server: { running: boolean }
+}
+
+export interface JupyterServerConnectionResponse {
+  /** e.g. "http://127.0.0.1:53214/" (trailing slash) */
+  baseUrl: string
+  /** e.g. "ws://127.0.0.1:53214/" */
+  wsUrl: string
+  token: string
 }
 
 export type McpTransport = 'stdio' | 'http' | 'sse'
