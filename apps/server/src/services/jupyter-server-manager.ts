@@ -44,6 +44,8 @@ interface JupyterServerEntry extends JupyterServerConnectionResponse {
   configDir: string
   runtimeFilesDir: string
   dataDir: string
+  /** Project python baked into this instance's kernelspec at spawn time. */
+  projectPython: string
   lastActivityAt: number
   shuttingDown: boolean
   spawnError: Error | null
@@ -252,8 +254,15 @@ export class JupyterServerManager {
 
     const existing = this.registry.get(key)
     if (existing && (await this.isEntryHealthy(existing))) {
-      existing.lastActivityAt = Date.now()
-      return this.connectionForEntry(existing)
+      // The kernelspec bakes in the project python at spawn time; if the
+      // resolved interpreter changed since (e.g. a .venv appeared), keep
+      // reusing the old server and kernels would silently run on the wrong
+      // python. Restart instead.
+      if (this.resolvePythonPath(key) === existing.projectPython) {
+        existing.lastActivityAt = Date.now()
+        return this.connectionForEntry(existing)
+      }
+      this.logger?.warn(`Project python changed for ${key}; restarting its Jupyter server.`)
     }
 
     if (existing) {
@@ -490,6 +499,7 @@ export class JupyterServerManager {
       configDir: instanceDirs.configDir,
       runtimeFilesDir: instanceDirs.runtimeFilesDir,
       dataDir: instanceDirs.dataDir,
+      projectPython: env.pythonPath,
       lastActivityAt: Date.now(),
       shuttingDown: false,
       spawnError: null

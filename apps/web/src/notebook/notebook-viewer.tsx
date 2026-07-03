@@ -226,7 +226,9 @@ export default function NotebookViewer({
               onDismiss={notebook.dismissEnvMissing}
             />
           ) : null}
-          {notebook.error && notebook.state === 'error' ? <div className="nb-banner nb-banner-warning">{notebook.error}</div> : null}
+          {notebook.error && (notebook.state === 'error' || notebook.state === 'env-missing') ? (
+            <div className="nb-banner nb-banner-warning">{notebook.error}</div>
+          ) : null}
           <SaveBanner saveState={notebook.saveState} saveError={notebook.saveError} onReload={notebook.reloadAfterConflict} />
         </>
       ) : null}

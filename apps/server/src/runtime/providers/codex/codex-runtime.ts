@@ -43,8 +43,9 @@ export const streamingNotificationMethods = new Set<string>([
   'item/reasoning/summaryPartAdded',
   'item/plan/delta',
   'item/mcpToolCall/progress',
-  'command/exec/outputDelta',
-  'process/outputDelta',
+  // NOTE: command/exec/outputDelta and process/outputDelta are intentionally
+  // NOT filtered: per the generated contracts their streamed output is not
+  // duplicated into the final command/exec response or process/exited event.
   'thread/tokenUsage/updated',
   'account/rateLimits/updated',
   'thread/realtime/outputAudio/delta',

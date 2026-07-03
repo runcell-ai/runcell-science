@@ -25,7 +25,11 @@ test('notifications with dedicated handlers or user value are not filtered', () 
     'item/completed',
     'turn/started',
     'turn/completed',
-    'item/fileChange/patchUpdated'
+    'item/fileChange/patchUpdated',
+    // Streamed output of these RPCs is NOT duplicated into their final
+    // events; dropping the deltas would discard the only copy.
+    'command/exec/outputDelta',
+    'process/outputDelta'
   ]
   for (const method of mustKeep) {
     assert.ok(!streamingNotificationMethods.has(method), `${method} must not be filtered`)
