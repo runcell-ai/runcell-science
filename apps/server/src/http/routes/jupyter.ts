@@ -13,7 +13,7 @@ import type {
 
 import { sessionEventBus } from '../../runtime'
 import { agentSessionService, jupyterServerManager } from '../../services'
-import { JupyterEnvMissingError } from '../../services/jupyter-server-manager'
+import { JupyterEnvMissingError, JupyterRuntimeError } from '../../services/jupyter-server-manager'
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
@@ -151,7 +151,10 @@ export const jupyterRoute: FastifyPluginAsync = async (server) => {
       return reply.code(502).send({
         error: {
           code: 'jupyter_start_failed',
-          message: 'Jupyter server failed to start for this session.'
+          // JupyterRuntimeError messages are user-actionable (provisioning /
+          // JUPYTER_SERVER_PYTHON problems) and never contain tokens.
+          message:
+            error instanceof JupyterRuntimeError ? error.message : 'Jupyter server failed to start for this session.'
         }
       } satisfies ApiErrorResponse)
     }
@@ -199,7 +202,8 @@ export const jupyterRoute: FastifyPluginAsync = async (server) => {
       return reply.code(502).send({
         error: {
           code: 'jupyter_start_failed',
-          message: 'Jupyter server failed to start for this workspace.'
+          message:
+            error instanceof JupyterRuntimeError ? error.message : 'Jupyter server failed to start for this workspace.'
         }
       } satisfies ApiErrorResponse)
     }
