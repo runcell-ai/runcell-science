@@ -7,6 +7,7 @@ import { promisify } from 'node:util'
 
 import type {
   JupyterPythonEnvStatus,
+  JupyterRuntimeStatus,
   JupyterServerConnectionResponse,
   JupyterServerStatusResponse
 } from '@open-science/contracts'
@@ -21,6 +22,15 @@ const readinessIntervalMs = 250
 const defaultReaperIntervalMs = 5 * 60 * 1000
 const defaultIdleMs = 30 * 60 * 1000
 const shutdownGraceMs = 3_000
+const provisionStepTimeoutMs = 300_000
+const installIpykernelTimeoutMs = 300_000
+
+/**
+ * Kernelspec name registered per workspace instance; UI and nbcli request it
+ * explicitly so kernels always run on the PROJECT python, never on the
+ * app-managed runtime env that hosts jupyter-server.
+ */
+export const workspaceKernelName = 'open-science-python'
 
 interface LoggerLike {
   debug(message: string): void
@@ -33,19 +43,21 @@ interface JupyterServerEntry extends JupyterServerConnectionResponse {
   instanceDir: string
   configDir: string
   runtimeFilesDir: string
+  dataDir: string
   lastActivityAt: number
   shuttingDown: boolean
   spawnError: Error | null
 }
 
-interface EnvCacheEntry {
-  status: JupyterPythonEnvStatus
+interface CachedCheck {
+  ok: boolean
   expiresAt: number
 }
 
 export interface JupyterServerManagerOptions {
   webOrigin?: string
   jupyterPythonPath?: string
+  jupyterServerPythonPath?: string
   runtimeDir?: string
   env?: NodeJS.ProcessEnv
   logger?: LoggerLike
@@ -58,6 +70,13 @@ export class JupyterEnvMissingError extends Error {
   constructor(readonly status: JupyterPythonEnvStatus) {
     super('Python environment is missing required Jupyter packages.')
     this.name = 'JupyterEnvMissingError'
+  }
+}
+
+export class JupyterRuntimeError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'JupyterRuntimeError'
   }
 }
 
@@ -122,22 +141,39 @@ async function withAbortTimeout<T>(ms: number, work: (signal: AbortSignal) => Pr
   }
 }
 
+/** Exported for unit tests: exact install command for a given interpreter. */
+export function buildIpykernelInstallCommand(
+  uvPath: string | null,
+  pythonPath: string
+): { command: string; args: string[] } {
+  if (uvPath) {
+    return { command: uvPath, args: ['pip', 'install', '--python', pythonPath, 'ipykernel'] }
+  }
+  return { command: pythonPath, args: ['-m', 'pip', 'install', 'ipykernel'] }
+}
+
 export class JupyterServerManager {
   private readonly webOrigin: string
   private readonly jupyterPythonPath: string | undefined
+  private readonly jupyterServerPythonPath: string | undefined
   private readonly runtimeDir: string
+  private readonly runtimeEnvDir: string
   private readonly env: NodeJS.ProcessEnv
   private logger: LoggerLike | undefined
   private readonly registry = new Map<string, JupyterServerEntry>()
   private readonly inFlight = new Map<string, Promise<JupyterServerConnectionResponse>>()
-  private readonly envCache = new Map<string, EnvCacheEntry>()
+  private readonly importChecks = new Map<string, CachedCheck>()
   private readonly idleMs: number
   private readonly reaper: NodeJS.Timeout | undefined
+  private provisionPromise: Promise<string> | null = null
+  private provisionError: string | null = null
 
   constructor(options: JupyterServerManagerOptions = {}) {
     this.webOrigin = options.webOrigin ?? config.webOrigin
     this.jupyterPythonPath = options.jupyterPythonPath ?? config.jupyterPythonPath
+    this.jupyterServerPythonPath = options.jupyterServerPythonPath ?? config.jupyterServerPythonPath
     this.runtimeDir = options.runtimeDir ?? path.join(path.dirname(config.sqlitePath), 'jupyter')
+    this.runtimeEnvDir = path.join(this.runtimeDir, 'runtime-env')
     this.env = options.env ?? process.env
     this.logger = options.logger
     this.idleMs = options.idleMs ?? defaultIdleMs
@@ -158,6 +194,7 @@ export class JupyterServerManager {
     return fs.realpathSync(cwd)
   }
 
+  /** The PROJECT python that kernels run with (never runs jupyter-server). */
   resolvePythonPath(cwd: string): string | null {
     if (this.jupyterPythonPath?.trim()) {
       const configured = this.jupyterPythonPath.trim()
@@ -175,36 +212,26 @@ export class JupyterServerManager {
   async envStatus(cwd: string): Promise<JupyterPythonEnvStatus> {
     const pythonPath = this.resolvePythonPath(cwd)
     if (!pythonPath) {
-      return {
-        pythonPath: null,
-        hasJupyterServer: false,
-        hasIpykernel: false
-      }
+      return { pythonPath: null, hasIpykernel: false }
     }
-
-    const cached = this.envCache.get(pythonPath)
-    if (cached && cached.expiresAt > Date.now()) {
-      return cached.status
-    }
-
-    const [hasJupyterServer, hasIpykernel] = await Promise.all([
-      this.canImport(pythonPath, 'jupyter_server'),
-      this.canImport(pythonPath, 'ipykernel')
-    ])
-    const status = {
+    return {
       pythonPath,
-      hasJupyterServer,
-      hasIpykernel
+      hasIpykernel: await this.cachedCanImport(pythonPath, 'ipykernel')
     }
-    this.envCache.set(pythonPath, {
-      status,
-      expiresAt: Date.now() + envStatusTtlMs
-    })
-    return status
+  }
+
+  /** Never provisions; safe for cheap polling. */
+  async runtimeStatus(): Promise<JupyterRuntimeStatus> {
+    if (this.provisionPromise) {
+      return { ready: false, provisioning: true, error: null }
+    }
+    const python = this.configuredRuntimePython() ?? path.join(this.runtimeEnvDir, 'bin', 'python')
+    const ready = fs.existsSync(python) && (await this.cachedCanImport(python, 'jupyter_server'))
+    return { ready, provisioning: false, error: this.provisionError }
   }
 
   async status(cwd: string): Promise<JupyterServerStatusResponse> {
-    const python = await this.envStatus(cwd)
+    const [runtime, python] = await Promise.all([this.runtimeStatus(), this.envStatus(cwd)])
     let running = false
     try {
       const entry = this.registry.get(this.resolveWorkspaceKey(cwd))
@@ -213,10 +240,7 @@ export class JupyterServerManager {
       running = false
     }
 
-    return {
-      python,
-      server: { running }
-    }
+    return { runtime, python, server: { running } }
   }
 
   async ensure(cwd: string): Promise<JupyterServerConnectionResponse> {
@@ -252,6 +276,25 @@ export class JupyterServerManager {
     }
   }
 
+  /** Installs ipykernel into the PROJECT python. Throws JupyterEnvMissingError when no python exists. */
+  async installIpykernel(cwd: string): Promise<JupyterPythonEnvStatus> {
+    const pythonPath = this.resolvePythonPath(cwd)
+    if (!pythonPath) {
+      throw new JupyterEnvMissingError({ pythonPath: null, hasIpykernel: false })
+    }
+
+    const { command, args } = buildIpykernelInstallCommand(this.which('uv'), pythonPath)
+    try {
+      await execFileAsync(command, args, { timeout: installIpykernelTimeoutMs, env: this.env })
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      throw new JupyterRuntimeError(`Installing ipykernel into ${pythonPath} failed: ${lastLines(detail)}`)
+    }
+
+    this.importChecks.delete(importCheckKey(pythonPath, 'ipykernel'))
+    return this.envStatus(cwd)
+  }
+
   async shutdown(cwd: string): Promise<void> {
     let key: string
     try {
@@ -279,6 +322,90 @@ export class JupyterServerManager {
     await Promise.all([...this.registry.values()].map((entry) => this.terminateEntry(entry)))
   }
 
+  private configuredRuntimePython(): string | null {
+    if (this.jupyterServerPythonPath?.trim()) {
+      const configured = this.jupyterServerPythonPath.trim()
+      return path.isAbsolute(configured) ? configured : path.resolve(configured)
+    }
+    return null
+  }
+
+  /**
+   * Python that runs jupyter-server: explicit override, else the app-managed
+   * env under runtimeDir, provisioned on demand (uv preferred, venv+pip
+   * fallback). Concurrent callers share one provisioning run.
+   */
+  private async ensureRuntimePython(): Promise<string> {
+    const configured = this.configuredRuntimePython()
+    if (configured) {
+      if (!(await this.cachedCanImport(configured, 'jupyter_server'))) {
+        throw new JupyterRuntimeError(`JUPYTER_SERVER_PYTHON (${configured}) cannot import jupyter_server.`)
+      }
+      return configured
+    }
+
+    const python = path.join(this.runtimeEnvDir, 'bin', 'python')
+    if (fs.existsSync(python) && (await this.cachedCanImport(python, 'jupyter_server'))) {
+      return python
+    }
+
+    this.provisionPromise ??= this.provisionRuntimeEnv(python).then(
+      (result) => {
+        this.provisionPromise = null
+        this.provisionError = null
+        return result
+      },
+      (error: unknown) => {
+        this.provisionPromise = null
+        this.provisionError = error instanceof Error ? error.message : String(error)
+        throw error
+      }
+    )
+    return this.provisionPromise
+  }
+
+  private async provisionRuntimeEnv(python: string): Promise<string> {
+    this.logger?.warn(`Provisioning Jupyter runtime environment at ${this.runtimeEnvDir} (first run only).`)
+    await fs.promises.rm(this.runtimeEnvDir, { recursive: true, force: true })
+    await fs.promises.mkdir(this.runtimeDir, { recursive: true })
+
+    const uv = this.which('uv')
+    try {
+      if (uv) {
+        await execFileAsync(uv, ['venv', this.runtimeEnvDir], { timeout: provisionStepTimeoutMs, env: this.env })
+        await execFileAsync(uv, ['pip', 'install', '--python', python, 'jupyter-server'], {
+          timeout: provisionStepTimeoutMs,
+          env: this.env
+        })
+      } else {
+        const bootstrap = this.which('python3')
+        if (!bootstrap) {
+          throw new JupyterRuntimeError('Neither uv nor python3 is available to provision the Jupyter runtime.')
+        }
+        await execFileAsync(bootstrap, ['-m', 'venv', this.runtimeEnvDir], {
+          timeout: provisionStepTimeoutMs,
+          env: this.env
+        })
+        await execFileAsync(python, ['-m', 'pip', 'install', 'jupyter-server'], {
+          timeout: provisionStepTimeoutMs,
+          env: this.env
+        })
+      }
+    } catch (error) {
+      if (error instanceof JupyterRuntimeError) {
+        throw error
+      }
+      const detail = error instanceof Error ? error.message : String(error)
+      throw new JupyterRuntimeError(`Provisioning the Jupyter runtime failed: ${lastLines(detail)}`)
+    }
+
+    this.importChecks.delete(importCheckKey(python, 'jupyter_server'))
+    if (!(await this.cachedCanImport(python, 'jupyter_server'))) {
+      throw new JupyterRuntimeError('Jupyter runtime provisioning finished but jupyter_server is not importable.')
+    }
+    return python
+  }
+
   private which(executable: string): string | null {
     const paths = (this.env.PATH ?? '').split(path.delimiter).filter(Boolean)
     for (const candidateDir of paths) {
@@ -290,29 +417,38 @@ export class JupyterServerManager {
     return null
   }
 
-  private async canImport(pythonPath: string, moduleName: string): Promise<boolean> {
+  private async cachedCanImport(pythonPath: string, moduleName: string): Promise<boolean> {
+    const key = importCheckKey(pythonPath, moduleName)
+    const cached = this.importChecks.get(key)
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.ok
+    }
+    let ok = false
     try {
       await execFileAsync(pythonPath, ['-c', `import ${moduleName}`], {
         timeout: importTimeoutMs,
         env: this.env
       })
-      return true
+      ok = true
     } catch {
-      return false
+      ok = false
     }
+    this.importChecks.set(key, { ok, expiresAt: Date.now() + envStatusTtlMs })
+    return ok
   }
 
   private async startServer(cwd: string): Promise<JupyterServerConnectionResponse> {
     const env = await this.envStatus(cwd)
-    if (!env.pythonPath || !env.hasJupyterServer || !env.hasIpykernel) {
+    if (!env.pythonPath || !env.hasIpykernel) {
       throw new JupyterEnvMissingError(env)
     }
+    const runtimePython = await this.ensureRuntimePython()
 
     const port = await this.pickPort()
     const token = crypto.randomBytes(24).toString('hex')
     const baseUrl = `http://127.0.0.1:${port}/`
     const wsUrl = `ws://127.0.0.1:${port}/`
-    const instanceDirs = await this.createInstanceDirs()
+    const instanceDirs = await this.createInstanceDirs(env.pythonPath)
 
     const args = [
       '-m',
@@ -324,15 +460,19 @@ export class JupyterServerManager {
       '--ServerApp.open_browser=False',
       `--ServerApp.allow_origin=${this.webOrigin}`,
       `--ServerApp.root_dir=${cwd}`,
-      '--ServerApp.terminals_enabled=False'
+      '--ServerApp.terminals_enabled=False',
+      `--MultiKernelManager.default_kernel_name=${workspaceKernelName}`
     ]
 
-    const child = spawn(env.pythonPath, args, {
+    const child = spawn(runtimePython, args, {
       cwd,
       env: {
         ...this.env,
         JUPYTER_CONFIG_DIR: instanceDirs.configDir,
-        JUPYTER_RUNTIME_DIR: instanceDirs.runtimeFilesDir
+        JUPYTER_RUNTIME_DIR: instanceDirs.runtimeFilesDir,
+        // Makes the per-instance kernelspec (project python) resolvable and
+        // searched before the runtime env's own specs.
+        JUPYTER_PATH: instanceDirs.dataDir
       },
       stdio: ['ignore', 'pipe', 'pipe']
     })
@@ -349,6 +489,7 @@ export class JupyterServerManager {
       instanceDir: instanceDirs.instanceDir,
       configDir: instanceDirs.configDir,
       runtimeFilesDir: instanceDirs.runtimeFilesDir,
+      dataDir: instanceDirs.dataDir,
       lastActivityAt: Date.now(),
       shuttingDown: false,
       spawnError: null
@@ -372,10 +513,6 @@ export class JupyterServerManager {
 
     try {
       await this.waitForReady(entry)
-      this.envCache.set(env.pythonPath, {
-        status: env,
-        expiresAt: Date.now() + envStatusTtlMs
-      })
       return this.connectionForEntry(entry)
     } catch (error) {
       await this.terminateEntry(entry)
@@ -386,14 +523,34 @@ export class JupyterServerManager {
     }
   }
 
-  private async createInstanceDirs(): Promise<{ instanceDir: string; configDir: string; runtimeFilesDir: string }> {
+  private async createInstanceDirs(projectPython: string): Promise<{
+    instanceDir: string
+    configDir: string
+    runtimeFilesDir: string
+    dataDir: string
+  }> {
     await fs.promises.mkdir(this.runtimeDir, { recursive: true })
     const instanceDir = await fs.promises.mkdtemp(path.join(this.runtimeDir, 'instance-'))
     const configDir = path.join(instanceDir, 'config')
     const runtimeFilesDir = path.join(instanceDir, 'runtime')
+    const dataDir = path.join(instanceDir, 'data')
+    const kernelDir = path.join(dataDir, 'kernels', workspaceKernelName)
     await fs.promises.mkdir(configDir)
     await fs.promises.mkdir(runtimeFilesDir)
-    return { instanceDir, configDir, runtimeFilesDir }
+    await fs.promises.mkdir(kernelDir, { recursive: true })
+    await fs.promises.writeFile(
+      path.join(kernelDir, 'kernel.json'),
+      `${JSON.stringify(
+        {
+          argv: [projectPython, '-m', 'ipykernel_launcher', '-f', '{connection_file}'],
+          display_name: 'Python (workspace)',
+          language: 'python'
+        },
+        null,
+        2
+      )}\n`
+    )
+    return { instanceDir, configDir, runtimeFilesDir, dataDir }
   }
 
   private pickPort(): Promise<number> {
@@ -538,6 +695,15 @@ export class JupyterServerManager {
       token: entry.token
     }
   }
+}
+
+function importCheckKey(pythonPath: string, moduleName: string): string {
+  return `${pythonPath}\0${moduleName}`
+}
+
+function lastLines(text: string, count = 5): string {
+  const lines = text.trim().split(/\r?\n/)
+  return lines.slice(-count).join('\n')
 }
 
 export const jupyterServerManager = new JupyterServerManager()

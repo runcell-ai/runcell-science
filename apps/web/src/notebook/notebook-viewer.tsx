@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { Copy, Loader2, Play, RefreshCw, RotateCcw, Square, X } from 'lucide-react'
+import { Download, Loader2, Play, RefreshCw, RotateCcw, Square, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
@@ -69,40 +68,37 @@ function SaveBanner({
 
 function EnvMissingPanel({
   envStatus,
+  installing,
+  onInstall,
   onDismiss
 }: {
   envStatus: JupyterPythonEnvStatus | null
+  installing: boolean
+  onInstall: () => void
   onDismiss: () => void
 }) {
-  const [copied, setCopied] = useState(false)
-  const missing = [
-    envStatus?.hasJupyterServer ? null : 'jupyter-server',
-    envStatus?.hasIpykernel ? null : 'ipykernel'
-  ].filter((name): name is string => Boolean(name))
-  const command = 'uv pip install jupyter-server ipykernel'
+  const hasPython = Boolean(envStatus?.pythonPath)
 
   return (
     <div className="nb-env-panel">
       <div className="nb-env-copy">
-        <strong>Jupyter environment missing</strong>
+        <strong>{hasPython ? 'ipykernel is missing' : 'No Python environment found'}</strong>
         <span>
           Python: <code>{envStatus?.pythonPath ?? 'not found'}</code>
         </span>
-        <span>Missing: {missing.length > 0 ? missing.join(', ') : 'required packages'}</span>
+        <span>
+          {hasPython
+            ? 'Running notebooks needs the ipykernel package in this workspace environment.'
+            : 'Create a .venv in this workspace (e.g. with uv) or install python3, then try again.'}
+        </span>
       </div>
       <div className="nb-env-command">
-        <code>{command}</code>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            void navigator.clipboard?.writeText(command).then(() => setCopied(true))
-          }}
-        >
-          <Copy />
-          {copied ? 'Copied' : 'Copy'}
-        </Button>
+        {hasPython ? (
+          <Button type="button" variant="outline" size="sm" disabled={installing} onClick={onInstall}>
+            {installing ? <Loader2 className="spin-icon" /> : <Download />}
+            {installing ? 'Installing…' : 'Install ipykernel'}
+          </Button>
+        ) : null}
         <Button type="button" variant="ghost" size="icon-sm" aria-label="Dismiss" title="Dismiss" onClick={onDismiss}>
           <X />
         </Button>
@@ -223,7 +219,12 @@ export default function NotebookViewer({
           />
           {running ? <div className="nb-banner">Agent is running — notebook is read-only until the turn ends.</div> : null}
           {notebook.state === 'env-missing' ? (
-            <EnvMissingPanel envStatus={notebook.envStatus} onDismiss={notebook.dismissEnvMissing} />
+            <EnvMissingPanel
+              envStatus={notebook.envStatus}
+              installing={notebook.installingIpykernel}
+              onInstall={() => void notebook.installIpykernel()}
+              onDismiss={notebook.dismissEnvMissing}
+            />
           ) : null}
           {notebook.error && notebook.state === 'error' ? <div className="nb-banner nb-banner-warning">{notebook.error}</div> : null}
           <SaveBanner saveState={notebook.saveState} saveError={notebook.saveError} onReload={notebook.reloadAfterConflict} />

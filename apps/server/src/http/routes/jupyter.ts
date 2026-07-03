@@ -5,11 +5,13 @@ import { type FastifyPluginAsync, type FastifyReply } from 'fastify'
 import type {
   ApiErrorResponse,
   AgentSessionSummary,
+  JupyterInstallIpykernelResponse,
   JupyterPythonEnvStatus,
   JupyterServerConnectionResponse,
   JupyterServerStatusResponse
 } from '@open-science/contracts'
 
+import { sessionEventBus } from '../../runtime'
 import { agentSessionService, jupyterServerManager } from '../../services'
 import { JupyterEnvMissingError } from '../../services/jupyter-server-manager'
 
@@ -46,15 +48,9 @@ function sendWorkspaceNotFound(reply: FastifyReply) {
 
 function missingEnvMessage(status: JupyterPythonEnvStatus): string {
   if (!status.pythonPath) {
-    return 'No Python interpreter was found for this session. Missing jupyter_server and ipykernel.'
+    return 'No Python interpreter was found for this workspace. Create a .venv or install python3.'
   }
-
-  const missing = [
-    status.hasJupyterServer ? null : 'jupyter_server',
-    status.hasIpykernel ? null : 'ipykernel'
-  ].filter((value): value is string => Boolean(value))
-
-  return `Python interpreter ${status.pythonPath} is missing ${missing.join(' and ')}.`
+  return `Python interpreter ${status.pythonPath} is missing ipykernel.`
 }
 
 export function knownWorkspaceRealpathForCwd(
@@ -207,5 +203,78 @@ export const jupyterRoute: FastifyPluginAsync = async (server) => {
         }
       } satisfies ApiErrorResponse)
     }
+  })
+
+  // One-click fix for the env-missing panel: installs ipykernel into the
+  // workspace's project python (uv when available, pip fallback).
+  server.post('/api/sessions/:sessionId/jupyter/ipykernel', async (request, reply) => {
+    const params = request.params as { sessionId?: string }
+    if (!isNonEmptyString(params.sessionId)) {
+      return sendBadRequest(reply, 'sessionId is required.')
+    }
+
+    const detail = agentSessionService.getSessionDetail(params.sessionId)
+    if (!detail) {
+      return sendSessionNotFound(reply)
+    }
+
+    try {
+      const python = await jupyterServerManager.installIpykernel(detail.session.cwd)
+      return reply.send({ ok: python.hasIpykernel, python } satisfies JupyterInstallIpykernelResponse)
+    } catch (error) {
+      if (error instanceof JupyterEnvMissingError) {
+        return reply.code(409).send({
+          error: {
+            code: 'jupyter_env_missing',
+            message: missingEnvMessage(error.status),
+            details: { python: error.status }
+          }
+        } satisfies ApiErrorResponse)
+      }
+      request.log.warn({ error }, 'Failed to install ipykernel.')
+      return reply.code(502).send({
+        error: {
+          code: 'jupyter_install_failed',
+          message: error instanceof Error ? error.message : 'Installing ipykernel failed.'
+        }
+      } satisfies ApiErrorResponse)
+    }
+  })
+
+  // Fire-and-forget signal from nbcli that an agent is executing a notebook;
+  // fans out to every session on that workspace so their panels focus it.
+  server.post('/api/jupyter/workspace/activity', async (request, reply) => {
+    const body = request.body as { cwd?: string; notebook?: string } | null
+    const cwd = resolveKnownWorkspaceCwd(body?.cwd)
+    if (cwd === null) {
+      return sendWorkspaceNotFound(reply)
+    }
+    if (typeof cwd !== 'string') {
+      return reply.code(cwd.code === 'bad_request' ? 400 : 404).send({ error: cwd } satisfies ApiErrorResponse)
+    }
+    const notebook = body?.notebook
+    if (!isNonEmptyString(notebook) || notebook.includes('\0') || path.isAbsolute(notebook) || notebook.split('/').includes('..')) {
+      return sendBadRequest(reply, 'notebook must be a workspace-relative path.')
+    }
+
+    const createdAt = new Date().toISOString()
+    for (const session of agentSessionService.listVisibleSessions()) {
+      try {
+        if (fs.realpathSync(session.cwd) !== cwd) {
+          continue
+        }
+      } catch {
+        continue
+      }
+      sessionEventBus.publish({
+        id: `nb_activity_${session.id}_${Date.now()}`,
+        type: 'notebook.activity',
+        sessionId: session.id,
+        createdAt,
+        path: notebook
+      })
+    }
+
+    return reply.code(204).send()
   })
 }

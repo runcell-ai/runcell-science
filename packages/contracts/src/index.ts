@@ -327,6 +327,11 @@ export type RuntimeSseEvent =
       type: 'runtime.error'
       message: string
     })
+  | (RuntimeSseEventBase & {
+      type: 'notebook.activity'
+      /** Session-cwd-relative posix path of the notebook an agent is executing. */
+      path: string
+    })
 
 export interface ApiErrorResponse {
   error: {
@@ -336,16 +341,32 @@ export interface ApiErrorResponse {
   }
 }
 
+/**
+ * The python that runs the user's kernels (project env). jupyter-server itself
+ * runs from an app-managed runtime env and is never the user's problem.
+ */
 export interface JupyterPythonEnvStatus {
-  /** Absolute path of the python interpreter the manager would use, or null if none found. */
+  /** Absolute path of the python interpreter kernels would run with, or null if none found. */
   pythonPath: string | null
-  hasJupyterServer: boolean
   hasIpykernel: boolean
 }
 
+/** App-managed environment that provides jupyter-server. */
+export interface JupyterRuntimeStatus {
+  ready: boolean
+  provisioning: boolean
+  error: string | null
+}
+
 export interface JupyterServerStatusResponse {
+  runtime: JupyterRuntimeStatus
   python: JupyterPythonEnvStatus
   server: { running: boolean }
+}
+
+export interface JupyterInstallIpykernelResponse {
+  ok: boolean
+  python: JupyterPythonEnvStatus
 }
 
 export interface JupyterServerConnectionResponse {

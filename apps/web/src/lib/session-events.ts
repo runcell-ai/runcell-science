@@ -28,7 +28,8 @@ export const runtimeEventTypes: RuntimeSseEvent['type'][] = [
   'diff.updated',
   'artifact.created',
   'artifact.updated',
-  'runtime.error'
+  'runtime.error',
+  'notebook.activity'
 ]
 
 const hiddenActivityEventTypes = new Set([

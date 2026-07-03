@@ -4,7 +4,12 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 
-import { JupyterEnvMissingError, JupyterServerManager } from '../src/services/jupyter-server-manager'
+import {
+  JupyterEnvMissingError,
+  JupyterRuntimeError,
+  JupyterServerManager,
+  buildIpykernelInstallCommand
+} from '../src/services/jupyter-server-manager'
 
 async function makeExecutable(filePath: string, contents: string): Promise<void> {
   await writeFile(filePath, contents)
@@ -70,7 +75,7 @@ test('workspace registry keys use the realpath of the cwd', async () => {
   }
 })
 
-test('ensure throws a typed error when the configured python is missing Jupyter modules', async () => {
+test('ensure throws a typed error when the project python is missing ipykernel', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'open-science-jupyter-missing-'))
   try {
     const workspace = path.join(root, 'workspace')
@@ -81,8 +86,7 @@ test('ensure throws a typed error when the configured python is missing Jupyter 
       fakePython,
       `#!/bin/sh
 case "$2" in
-  *jupyter_server*) exit 1 ;;
-  *ipykernel*) exit 0 ;;
+  *ipykernel*) exit 1 ;;
 esac
 exit 0
 `
@@ -100,8 +104,7 @@ exit 0
         assert.ok(error instanceof JupyterEnvMissingError)
         assert.deepEqual(error.status, {
           pythonPath: fakePython,
-          hasJupyterServer: false,
-          hasIpykernel: true
+          hasIpykernel: false
         })
         return true
       }
@@ -110,4 +113,45 @@ exit 0
   } finally {
     await rm(root, { recursive: true, force: true })
   }
+})
+
+test('ensure surfaces a runtime error when JUPYTER_SERVER_PYTHON cannot import jupyter_server', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'open-science-jupyter-runtime-'))
+  try {
+    const workspace = path.join(root, 'workspace')
+    const runtimeDir = path.join(root, 'runtime')
+    const projectPython = path.join(root, 'project-python')
+    const brokenRuntimePython = path.join(root, 'runtime-python')
+    await mkdir(workspace, { recursive: true })
+    await makeExecutable(projectPython, '#!/bin/sh\nexit 0\n')
+    await makeExecutable(brokenRuntimePython, '#!/bin/sh\nexit 1\n')
+
+    const manager = new JupyterServerManager({
+      jupyterPythonPath: projectPython,
+      jupyterServerPythonPath: brokenRuntimePython,
+      runtimeDir,
+      disableReaper: true
+    })
+
+    await assert.rejects(
+      () => manager.ensure(workspace),
+      (error) => error instanceof JupyterRuntimeError
+    )
+    const runtime = await manager.runtimeStatus()
+    assert.equal(runtime.ready, false)
+    await manager.disposeAll()
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('ipykernel install command prefers uv and falls back to pip', () => {
+  assert.deepEqual(buildIpykernelInstallCommand('/usr/local/bin/uv', '/ws/.venv/bin/python'), {
+    command: '/usr/local/bin/uv',
+    args: ['pip', 'install', '--python', '/ws/.venv/bin/python', 'ipykernel']
+  })
+  assert.deepEqual(buildIpykernelInstallCommand(null, '/ws/.venv/bin/python'), {
+    command: '/ws/.venv/bin/python',
+    args: ['-m', 'pip', 'install', 'ipykernel']
+  })
 })

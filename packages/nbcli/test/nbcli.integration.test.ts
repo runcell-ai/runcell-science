@@ -51,8 +51,21 @@ async function startJupyter(workspace: string, runtimeRoot: string) {
   const wsUrl = `ws://127.0.0.1:${port}/`
   const configDir = path.join(runtimeRoot, 'config')
   const runtimeDir = path.join(runtimeRoot, 'runtime')
+  const dataDir = path.join(runtimeRoot, 'data')
   await mkdir(configDir, { recursive: true })
   await mkdir(runtimeDir, { recursive: true })
+  // Mirror the manager's per-workspace kernelspec registration: nbcli requests
+  // the 'open-science-python' kernel, so the test server must expose it.
+  const kernelDir = path.join(dataDir, 'kernels', 'open-science-python')
+  await mkdir(kernelDir, { recursive: true })
+  await writeFile(
+    path.join(kernelDir, 'kernel.json'),
+    JSON.stringify({
+      argv: [spikePython, '-m', 'ipykernel_launcher', '-f', '{connection_file}'],
+      display_name: 'Python (workspace)',
+      language: 'python'
+    })
+  )
 
   const child = spawn(
     spikePython,
@@ -73,7 +86,8 @@ async function startJupyter(workspace: string, runtimeRoot: string) {
       env: {
         ...process.env,
         JUPYTER_CONFIG_DIR: configDir,
-        JUPYTER_RUNTIME_DIR: runtimeDir
+        JUPYTER_RUNTIME_DIR: runtimeDir,
+        JUPYTER_PATH: dataDir
       },
       stdio: ['ignore', 'ignore', 'ignore']
     }
@@ -191,7 +205,7 @@ test('nbcli shares a real Jupyter kernel and persists exec-cell outputs', { time
     await jupyterFetch(jupyter, 'api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: 't.ipynb', name: 't.ipynb', type: 'notebook', kernel: { name: 'python3' } })
+      body: JSON.stringify({ path: 't.ipynb', name: 't.ipynb', type: 'notebook', kernel: { name: 'open-science-python' } })
     })
 
     const assign = await runNbcli(workspace, stub.apiUrl, ['exec-code', '--notebook', 't.ipynb', 'x = 41'])

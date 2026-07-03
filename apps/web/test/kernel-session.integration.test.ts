@@ -90,8 +90,21 @@ async function startJupyter(workspace: string, runtimeDir: string): Promise<{ co
   }
   const configDir = path.join(runtimeDir, 'config')
   const runtimeFilesDir = path.join(runtimeDir, 'runtime')
+  const dataDir = path.join(runtimeDir, 'data')
   await mkdir(configDir, { recursive: true })
   await mkdir(runtimeFilesDir, { recursive: true })
+  // Mirror the manager's per-workspace kernelspec: KernelSession requests the
+  // 'open-science-python' kernel, so the test server must expose it.
+  const kernelDir = path.join(dataDir, 'kernels', 'open-science-python')
+  await mkdir(kernelDir, { recursive: true })
+  await writeFile(
+    path.join(kernelDir, 'kernel.json'),
+    JSON.stringify({
+      argv: [spikePython, '-m', 'ipykernel_launcher', '-f', '{connection_file}'],
+      display_name: 'Python (workspace)',
+      language: 'python'
+    })
+  )
 
   const child = spawn(
     spikePython,
@@ -112,7 +125,8 @@ async function startJupyter(workspace: string, runtimeDir: string): Promise<{ co
       env: {
         ...process.env,
         JUPYTER_CONFIG_DIR: configDir,
-        JUPYTER_RUNTIME_DIR: runtimeFilesDir
+        JUPYTER_RUNTIME_DIR: runtimeFilesDir,
+        JUPYTER_PATH: dataDir
       },
       stdio: ['ignore', 'pipe', 'pipe']
     }

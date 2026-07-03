@@ -18,6 +18,7 @@ import type {
 } from '../../code-agent-provider'
 import { RuntimeProviderError } from '../../code-agent-provider'
 import { agentIntegrationEnv, sanitizedProcessEnv } from '../../env-utils'
+import { notebookAgentGuidance } from '../../notebook-guidance'
 import type { ServerNotification } from './generated/ServerNotification'
 import type { ServerRequest } from './generated/ServerRequest'
 import type { ThreadStartResponse } from './generated/v2/ThreadStartResponse'
@@ -26,6 +27,29 @@ import type { TurnStartResponse } from './generated/v2/TurnStartResponse'
 import type { ThreadItem } from './generated/v2/ThreadItem'
 import type { FileUpdateChange } from './generated/v2/FileUpdateChange'
 import { CodexJsonRpcClient, type CodexJsonRpcMessage } from './json-rpc-client'
+
+/**
+ * Streaming/progress notifications whose aggregate arrives with the item
+ * itself (item/completed and the explicit delta handlers). Recording each
+ * chunk floods the session timeline — a single pip install produced hundreds
+ * of `item/commandExecution/outputDelta` rows. `item/agentMessage/delta` is
+ * NOT here: it streams into the assistant message via its own handler.
+ */
+export const streamingNotificationMethods = new Set<string>([
+  'item/commandExecution/outputDelta',
+  'item/fileChange/outputDelta',
+  'item/reasoning/textDelta',
+  'item/reasoning/summaryTextDelta',
+  'item/reasoning/summaryPartAdded',
+  'item/plan/delta',
+  'item/mcpToolCall/progress',
+  'command/exec/outputDelta',
+  'process/outputDelta',
+  'thread/tokenUsage/updated',
+  'account/rateLimits/updated',
+  'thread/realtime/outputAudio/delta',
+  'thread/realtime/transcript/delta'
+])
 
 interface CodexTurnBinding {
   sessionId: string
@@ -74,7 +98,8 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
       model: input.session.model ?? config.codexDefaultModel,
       approvalPolicy: config.codexApprovalPolicy,
       sandbox: config.codexSandbox,
-      serviceName: 'open-science'
+      serviceName: 'open-science',
+      developerInstructions: notebookAgentGuidance
     }, SESSION_RPC_TIMEOUT_MS)
 
     this.bindThread(state, response.thread.id, response.thread.sessionId)
@@ -234,7 +259,8 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
       cwd: session.cwd,
       model: session.model ?? config.codexDefaultModel,
       approvalPolicy: config.codexApprovalPolicy,
-      sandbox: config.codexSandbox
+      sandbox: config.codexSandbox,
+      developerInstructions: notebookAgentGuidance
     }, SESSION_RPC_TIMEOUT_MS)
 
     this.bindThread(state, response.thread.id, response.thread.sessionId)
@@ -307,6 +333,10 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
 
   private handleNotification(state: CodexSessionState, message: CodexJsonRpcMessage): void {
     const notification = message as ServerNotification
+
+    if (notification.method && streamingNotificationMethods.has(notification.method)) {
+      return
+    }
 
     switch (notification.method) {
       case 'item/agentMessage/delta':

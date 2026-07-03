@@ -40,6 +40,8 @@ type ArtifactsPanelProps = {
   creating: boolean
   /** Whether an agent turn is currently running; previews reload when it ends. */
   running: boolean
+  /** Set when an agent executes a notebook; the panel focuses that file. */
+  focusFile: { path: string; nonce: number } | null
   onDraftChange: (value: string) => void
   onCreate: (value: string) => void
   onSelectArtifact: (id: string | null) => void
@@ -515,6 +517,7 @@ function ArtifactsPanel({
   draft,
   creating,
   running,
+  focusFile,
   onDraftChange,
   onCreate,
   onSelectArtifact,
@@ -528,7 +531,7 @@ function ArtifactsPanel({
   const [reloadNonce, setReloadNonce] = useState(0)
   const wasRunning = useRef(running)
 
-  const loadWorkspace = useCallback(async () => {
+  const loadWorkspace = useCallback(async (): Promise<WorkspaceFile[] | null> => {
     setWorkspace({ status: 'loading' })
     try {
       const response = await fetch(`${apiBaseUrl}/api/sessions/${encodeURIComponent(sessionId)}/files`)
@@ -537,8 +540,10 @@ function ArtifactsPanel({
       }
       const body = (await response.json()) as ListWorkspaceFilesResponse
       setWorkspace({ status: 'ready', files: body.files, truncated: body.truncated })
+      return body.files
     } catch (error) {
       setWorkspace({ status: 'error', message: error instanceof Error ? error.message : String(error) })
+      return null
     }
   }, [apiBaseUrl, sessionId])
 
@@ -568,6 +573,31 @@ function ArtifactsPanel({
     }
     wasRunning.current = running
   }, [running, loadWorkspace])
+
+  // An agent started executing a notebook: surface it. Refresh the listing
+  // (the file may have just been created) and select it in the workspace tab.
+  useEffect(() => {
+    if (!focusFile) {
+      return
+    }
+    let cancelled = false
+    void loadWorkspace().then((files) => {
+      if (cancelled || !files) {
+        return
+      }
+      const target = files.find((file) => file.path === focusFile.path)
+      if (target) {
+        setScope('workspace')
+        onSelectArtifact(null)
+        setSelectedFile(target)
+        setReloadNonce((nonce) => nonce + 1)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by nonce so repeated activity refocuses
+  }, [focusFile?.nonce])
 
   const activeArtifact = useMemo(
     () => artifacts.find((artifact) => artifact.id === activeArtifactId) ?? null,

@@ -211,15 +211,32 @@ async function ensureWorkspace(apiUrl, cwd) {
   } catch (error) {
     if (error?.code === 'jupyter_env_missing') {
       const python = error.details?.python
-      const missing = []
-      if (!python?.hasJupyterServer) missing.push('jupyter_server')
-      if (!python?.hasIpykernel) missing.push('ipykernel')
       throw new CliError(
-        `Jupyter environment is missing for ${python?.pythonPath ?? 'the selected interpreter'}: ${missing.join(', ')}.`,
+        python?.pythonPath
+          ? `Python interpreter ${python.pythonPath} is missing ipykernel. Install it (e.g. uv pip install --python ${python.pythonPath} ipykernel) and retry.`
+          : 'No Python interpreter was found for this workspace. Create a .venv or install python3.',
         2
       )
     }
     throw error
+  }
+}
+
+// Best-effort UI signal so the user's notebook panel focuses the file being
+// executed. Never blocks or fails an execution.
+async function reportNotebookActivity(apiUrl, cwd, notebookPath) {
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 2_000)
+    await fetch(new URL('api/jupyter/workspace/activity', apiUrl), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cwd, notebook: notebookPath }),
+      signal: controller.signal
+    })
+    clearTimeout(timeout)
+  } catch {
+    // Ignore: the panel focus signal is optional.
   }
 }
 
@@ -238,7 +255,8 @@ async function findOrCreateSession(connection, notebookPath) {
       path: notebookPath,
       name: path.posix.basename(notebookPath),
       type: 'notebook',
-      kernel: { name: 'python3' }
+      // Per-workspace kernelspec registered by the server; runs the project python.
+      kernel: { name: 'open-science-python' }
     })
   })
 }
@@ -395,8 +413,9 @@ async function runStatus(options) {
   const python = status.python
   console.log(`cwd: ${cwd}`)
   console.log(`python: ${python.pythonPath ?? 'not found'}`)
-  console.log(`jupyter_server: ${python.hasJupyterServer ? 'present' : 'missing'}`)
   console.log(`ipykernel: ${python.hasIpykernel ? 'present' : 'missing'}`)
+  const runtime = status.runtime ?? {}
+  console.log(`runtime: ${runtime.ready ? 'ready' : runtime.provisioning ? 'provisioning' : runtime.error ? `error (${runtime.error})` : 'not provisioned yet'}`)
   console.log(`server: ${status.server?.running ? 'running' : 'stopped'}`)
 }
 
@@ -419,6 +438,7 @@ async function runExec(options, mode) {
   }
 
   const connection = await ensureWorkspace(apiUrl, cwd)
+  await reportNotebookActivity(apiUrl, cwd, notebookPath)
   const session = await findOrCreateSession(connection, notebookPath)
   const kernelId = session?.kernel?.id
   if (!kernelId) throw new Error('Jupyter session response did not include a kernel id.')

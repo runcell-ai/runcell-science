@@ -229,7 +229,9 @@ export class KernelSession {
           path: options.path,
           name: baseName(options.path),
           type: 'notebook',
-          kernel: { name: 'python3' }
+          // Registered per workspace by the server manager; runs the PROJECT
+          // python, not the app-managed env that hosts jupyter-server.
+          kernel: { name: 'open-science-python' }
         })
 
     return new KernelSession(services, manager, kernelManager, session as ServiceSession, options.onStatusChange)

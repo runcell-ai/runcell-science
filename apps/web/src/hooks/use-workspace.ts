@@ -172,6 +172,7 @@ export function useWorkspace() {
     activeArtifactId: state.activeArtifactId,
     artifactDraft: state.artifactDraft,
     errorMessage: state.errorMessage,
+    notebookFocus: state.notebookFocus,
     isDraft,
     running,
     timelineItems,

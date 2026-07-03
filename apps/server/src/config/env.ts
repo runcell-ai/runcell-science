@@ -19,7 +19,10 @@ export interface ServerConfig {
   webOrigin: string
   agentDefaultCwd: string
   agentDefaultRuntimeMode: AgentRuntimeMode
+  /** Overrides the PROJECT python used for kernels (tests / power users). */
   jupyterPythonPath: string | undefined
+  /** Overrides the app-managed python that runs jupyter-server itself. */
+  jupyterServerPythonPath: string | undefined
   codexBinaryPath: string
   codexHome: string | null
   codexDefaultModel: string | null
@@ -122,6 +125,7 @@ export const config: ServerConfig = {
   agentDefaultCwd: resolveWorkspacePath(process.env.AGENT_DEFAULT_CWD) ?? workspaceRoot,
   agentDefaultRuntimeMode: resolveRuntimeMode(process.env.AGENT_DEFAULT_RUNTIME_MODE),
   jupyterPythonPath: process.env.JUPYTER_PYTHON?.trim() || undefined,
+  jupyterServerPythonPath: process.env.JUPYTER_SERVER_PYTHON?.trim() || undefined,
   codexBinaryPath: process.env.CODEX_BINARY_PATH?.trim() || 'codex',
   codexHome: resolveWorkspacePath(process.env.CODEX_HOME) ?? null,
   codexDefaultModel: process.env.CODEX_DEFAULT_MODEL?.trim() || null,

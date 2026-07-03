@@ -19,6 +19,8 @@ export interface WorkspaceState {
   activeArtifactId: string | null
   artifactDraft: string
   errorMessage: string | null
+  /** Bumped when an agent executes a notebook; the artifacts panel focuses it. */
+  notebookFocus: { path: string; nonce: number } | null
 }
 
 export const initialWorkspaceState: WorkspaceState = {
@@ -30,7 +32,8 @@ export const initialWorkspaceState: WorkspaceState = {
   sidePanel: null,
   activeArtifactId: null,
   artifactDraft: '',
-  errorMessage: null
+  errorMessage: null,
+  notebookFocus: null
 }
 
 /**
@@ -128,6 +131,17 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
         return state
       }
       const detail = applyRuntimeEvent(state.detail, event)
+      if (event.type === 'notebook.activity') {
+        return {
+          ...state,
+          detail,
+          sidePanel: 'artifacts',
+          notebookFocus: {
+            path: event.path,
+            nonce: (state.notebookFocus?.nonce ?? 0) + 1
+          }
+        }
+      }
       if (event.type === 'artifact.created') {
         return {
           ...state,

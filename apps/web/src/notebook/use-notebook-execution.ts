@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   ApiErrorResponse,
+  JupyterInstallIpykernelResponse,
   JupyterPythonEnvStatus,
   JupyterServerConnectionResponse
 } from '@open-science/contracts'
@@ -36,11 +37,13 @@ export interface NotebookExecutionController {
   cellStates: Record<string, NotebookCellExecutionState>
   saveState: NotebookSaveState
   saveError: string | null
+  installingIpykernel: boolean
   runCell: (cellId: string) => Promise<void>
   runAll: () => Promise<void>
   interrupt: () => Promise<void>
   restart: () => Promise<void>
   dismissEnvMissing: () => void
+  installIpykernel: () => Promise<void>
   reloadAfterConflict: () => void
 }
 
@@ -72,7 +75,6 @@ function parseEnvStatus(body: ApiErrorResponse | null): JupyterPythonEnvStatus |
   }
   return {
     pythonPath: typeof python.pythonPath === 'string' ? python.pythonPath : null,
-    hasJupyterServer: python.hasJupyterServer === true,
     hasIpykernel: python.hasIpykernel === true
   }
 }
@@ -105,6 +107,7 @@ export function useNotebookExecution(options: UseNotebookExecutionOptions): Note
   const [cellStates, setCellStates] = useState<Record<string, NotebookCellExecutionState>>({})
   const [saveState, setSaveState] = useState<NotebookSaveState>('idle')
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [installingIpykernel, setInstallingIpykernel] = useState(false)
 
   const docRef = useRef<NotebookDoc | null>(doc)
   const sessionRef = useRef<KernelSession | null>(null)
@@ -428,6 +431,35 @@ export function useNotebookExecution(options: UseNotebookExecutionOptions): Note
     }
   }, [state])
 
+  const installIpykernel = useCallback(async () => {
+    if (options.apiBaseUrl === undefined || !options.sessionId || installingIpykernel) {
+      return
+    }
+    setInstallingIpykernel(true)
+    setError(null)
+    try {
+      const response = await fetch(
+        `${options.apiBaseUrl}/api/sessions/${encodeURIComponent(options.sessionId)}/jupyter/ipykernel`,
+        { method: 'POST' }
+      )
+      if (!response.ok) {
+        throw new Error((await readApiError(response)).message)
+      }
+      const body = (await response.json()) as JupyterInstallIpykernelResponse
+      if (!body.ok) {
+        setEnvStatus(body.python)
+        throw new Error('ipykernel is still missing after the install; check the server logs.')
+      }
+      // Ready to run again: clear the env-missing panel.
+      setEnvStatus(null)
+      setState('disconnected')
+    } catch (installError) {
+      setError(installError instanceof Error ? installError.message : String(installError))
+    } finally {
+      setInstallingIpykernel(false)
+    }
+  }, [installingIpykernel, options.apiBaseUrl, options.sessionId])
+
   const reloadAfterConflict = useCallback(() => {
     setSaveState('idle')
     setSaveError(null)
@@ -450,11 +482,13 @@ export function useNotebookExecution(options: UseNotebookExecutionOptions): Note
     cellStates,
     saveState,
     saveError,
+    installingIpykernel,
     runCell,
     runAll,
     interrupt,
     restart,
     dismissEnvMissing,
+    installIpykernel,
     reloadAfterConflict
   }
 }

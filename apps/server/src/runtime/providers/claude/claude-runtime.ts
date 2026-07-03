@@ -20,6 +20,7 @@ import type {
 } from '../../code-agent-provider'
 import { RuntimeProviderError } from '../../code-agent-provider'
 import { agentIntegrationEnv, sanitizedProcessEnv } from '../../env-utils'
+import { notebookAgentGuidance } from '../../notebook-guidance'
 
 interface ClaudeActiveTurn {
   sessionId: string
@@ -137,7 +138,8 @@ export class ClaudeRuntime implements CodeAgentProviderRuntime {
       allowDangerouslySkipPermissions: config.claudeAllowDangerouslySkipPermissions,
       systemPrompt: {
         type: 'preset',
-        preset: 'claude_code'
+        preset: 'claude_code',
+        append: notebookAgentGuidance
       },
       env: {
         ...sanitizedProcessEnv(),

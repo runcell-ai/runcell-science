@@ -193,6 +193,7 @@ function App() {
                     draft={workspace.artifactDraft}
                     creating={workspace.isCreatingArtifact}
                     running={workspace.running}
+                    focusFile={workspace.notebookFocus}
                     onDraftChange={workspace.setArtifactDraft}
                     onCreate={(value) => void workspace.createArtifact(value)}
                     onSelectArtifact={workspace.selectArtifact}
