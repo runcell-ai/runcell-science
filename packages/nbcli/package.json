@@ -1,0 +1,14 @@
+{
+  "name": "@open-science/nbcli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": "./nbcli.mjs",
+  "scripts": {
+    "test": "tsx --test \"test/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.17",
+    "tsx": "^4.20.3"
+  }
+}

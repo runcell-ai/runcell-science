@@ -1,3 +1,7 @@
+import path from 'node:path'
+
+import { config } from '../config/env'
+
 const AGENT_HOME_ENV_KEYS = ['CODEX_HOME', 'CLAUDE_CONFIG_DIR'] as const
 
 /**
@@ -15,4 +19,11 @@ export function sanitizedProcessEnv(): NodeJS.ProcessEnv {
     }
   }
   return env
+}
+
+export function agentIntegrationEnv(): NodeJS.ProcessEnv {
+  return {
+    OPEN_SCIENCE_API_URL: `http://127.0.0.1:${config.port}`,
+    OPEN_SCIENCE_NBCLI: path.join(config.workspaceRoot, 'packages/nbcli/nbcli.mjs')
+  }
 }

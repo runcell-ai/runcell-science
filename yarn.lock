@@ -703,6 +703,17 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@open-science/nbcli@workspace:packages/nbcli":
+  version: 0.0.0-use.local
+  resolution: "@open-science/nbcli@workspace:packages/nbcli"
+  dependencies:
+    "@types/node": "npm:^22.15.17"
+    tsx: "npm:^4.20.3"
+  bin:
+    nbcli: ./nbcli.mjs
+  languageName: unknown
+  linkType: soft
+
 "@open-science/server@workspace:apps/server":
   version: 0.0.0-use.local
   resolution: "@open-science/server@workspace:apps/server"

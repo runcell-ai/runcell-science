@@ -19,7 +19,7 @@ import type {
   RuntimeStartTurnInput
 } from '../../code-agent-provider'
 import { RuntimeProviderError } from '../../code-agent-provider'
-import { sanitizedProcessEnv } from '../../env-utils'
+import { agentIntegrationEnv, sanitizedProcessEnv } from '../../env-utils'
 
 interface ClaudeActiveTurn {
   sessionId: string
@@ -141,6 +141,7 @@ export class ClaudeRuntime implements CodeAgentProviderRuntime {
       },
       env: {
         ...sanitizedProcessEnv(),
+        ...agentIntegrationEnv(),
         CLAUDE_AGENT_SDK_CLIENT_APP: 'open-science/0.1.0',
         ...(config.claudeConfigDir ? { CLAUDE_CONFIG_DIR: config.claudeConfigDir } : {})
       },

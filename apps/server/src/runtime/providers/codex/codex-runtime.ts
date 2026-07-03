@@ -17,7 +17,7 @@ import type {
   RuntimeStartTurnInput
 } from '../../code-agent-provider'
 import { RuntimeProviderError } from '../../code-agent-provider'
-import { sanitizedProcessEnv } from '../../env-utils'
+import { agentIntegrationEnv, sanitizedProcessEnv } from '../../env-utils'
 import type { ServerNotification } from './generated/ServerNotification'
 import type { ServerRequest } from './generated/ServerRequest'
 import type { ThreadStartResponse } from './generated/v2/ThreadStartResponse'
@@ -538,6 +538,7 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
   private buildEnv(): NodeJS.ProcessEnv {
     return {
       ...sanitizedProcessEnv(),
+      ...agentIntegrationEnv(),
       ...(config.codexHome ? { CODEX_HOME: config.codexHome } : {})
     }
   }

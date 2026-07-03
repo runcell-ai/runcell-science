@@ -7,6 +7,7 @@ import dotenv from 'dotenv'
 import type { AgentRuntimeMode } from '@open-science/contracts'
 
 export interface ServerConfig {
+  workspaceRoot: string
   host: string
   port: number
   sqlitePath: string
@@ -106,6 +107,7 @@ function resolveBoolean(value: string | undefined, defaultValue: boolean): boole
 }
 
 export const config: ServerConfig = {
+  workspaceRoot,
   host: process.env.SERVER_HOST ?? '0.0.0.0',
   port: Number.isNaN(rawPort) ? defaultServerPort : rawPort,
   sqlitePath: resolveWorkspacePath(process.env.SQLITE_PATH) ?? path.join(workspaceRoot, 'apps/server/data/open-science.sqlite'),

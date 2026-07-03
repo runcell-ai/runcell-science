@@ -1,6 +1,10 @@
+import fs from 'node:fs'
+import path from 'node:path'
+
 import { type FastifyPluginAsync, type FastifyReply } from 'fastify'
 import type {
   ApiErrorResponse,
+  AgentSessionSummary,
   JupyterPythonEnvStatus,
   JupyterServerConnectionResponse,
   JupyterServerStatusResponse
@@ -31,6 +35,15 @@ function sendSessionNotFound(reply: FastifyReply) {
   } satisfies ApiErrorResponse)
 }
 
+function sendWorkspaceNotFound(reply: FastifyReply) {
+  return reply.code(404).send({
+    error: {
+      code: 'not_found',
+      message: 'Workspace was not found.'
+    }
+  } satisfies ApiErrorResponse)
+}
+
 function missingEnvMessage(status: JupyterPythonEnvStatus): string {
   if (!status.pythonPath) {
     return 'No Python interpreter was found for this session. Missing jupyter_server and ipykernel.'
@@ -42,6 +55,55 @@ function missingEnvMessage(status: JupyterPythonEnvStatus): string {
   ].filter((value): value is string => Boolean(value))
 
   return `Python interpreter ${status.pythonPath} is missing ${missing.join(' and ')}.`
+}
+
+export function knownWorkspaceRealpathForCwd(
+  cwd: string,
+  sessions: Pick<AgentSessionSummary, 'cwd'>[]
+): string | null {
+  let requestedReal: string
+  try {
+    requestedReal = fs.realpathSync(cwd)
+  } catch {
+    return null
+  }
+
+  for (const session of sessions) {
+    try {
+      if (fs.realpathSync(session.cwd) === requestedReal) {
+        return requestedReal
+      }
+    } catch {
+      // Ignore stale session cwd values.
+    }
+  }
+
+  return null
+}
+
+function validateAbsoluteCwd(cwd: unknown): string | ApiErrorResponse['error'] {
+  if (!isNonEmptyString(cwd)) {
+    return {
+      code: 'bad_request',
+      message: 'cwd is required.'
+    }
+  }
+  if (cwd.includes('\0') || !path.isAbsolute(cwd)) {
+    return {
+      code: 'bad_request',
+      message: 'cwd must be an absolute path.'
+    }
+  }
+  return cwd
+}
+
+function resolveKnownWorkspaceCwd(cwd: unknown): string | ApiErrorResponse['error'] | null {
+  const validated = validateAbsoluteCwd(cwd)
+  if (typeof validated !== 'string') {
+    return validated
+  }
+
+  return knownWorkspaceRealpathForCwd(validated, agentSessionService.listVisibleSessions())
 }
 
 export const jupyterRoute: FastifyPluginAsync = async (server) => {
@@ -94,6 +156,54 @@ export const jupyterRoute: FastifyPluginAsync = async (server) => {
         error: {
           code: 'jupyter_start_failed',
           message: 'Jupyter server failed to start for this session.'
+        }
+      } satisfies ApiErrorResponse)
+    }
+  })
+
+  server.get('/api/jupyter/workspace', async (request, reply) => {
+    const query = request.query as { cwd?: string }
+    const cwd = resolveKnownWorkspaceCwd(query.cwd)
+    if (cwd === null) {
+      return sendWorkspaceNotFound(reply)
+    }
+    if (typeof cwd !== 'string') {
+      return reply.code(cwd.code === 'bad_request' ? 400 : 404).send({ error: cwd } satisfies ApiErrorResponse)
+    }
+
+    return reply.send((await jupyterServerManager.status(cwd)) satisfies JupyterServerStatusResponse)
+  })
+
+  server.post('/api/jupyter/workspace', async (request, reply) => {
+    const body = request.body as { cwd?: string } | null
+    const cwd = resolveKnownWorkspaceCwd(body?.cwd)
+    if (cwd === null) {
+      return sendWorkspaceNotFound(reply)
+    }
+    if (typeof cwd !== 'string') {
+      return reply.code(cwd.code === 'bad_request' ? 400 : 404).send({ error: cwd } satisfies ApiErrorResponse)
+    }
+
+    try {
+      return reply.send((await jupyterServerManager.ensure(cwd)) satisfies JupyterServerConnectionResponse)
+    } catch (error) {
+      if (error instanceof JupyterEnvMissingError) {
+        return reply.code(409).send({
+          error: {
+            code: 'jupyter_env_missing',
+            message: missingEnvMessage(error.status),
+            details: {
+              python: error.status
+            }
+          }
+        } satisfies ApiErrorResponse)
+      }
+
+      request.log.warn({ error }, 'Failed to start Jupyter server.')
+      return reply.code(502).send({
+        error: {
+          code: 'jupyter_start_failed',
+          message: 'Jupyter server failed to start for this workspace.'
         }
       } satisfies ApiErrorResponse)
     }
