@@ -129,11 +129,14 @@ async function jupyterFetch(connection: { baseUrl: string; token: string }, reso
   return body
 }
 
-async function runNbcli(workspace: string, apiUrl: string, args: string[]) {
+async function runNbcli(workspace: string, apiUrl: string | null, args: string[]) {
+  const env = { ...process.env }
+  if (apiUrl) env.OPEN_SCIENCE_API_URL = apiUrl
+  else delete env.OPEN_SCIENCE_API_URL
   try {
     const result = await execFileAsync(process.execPath, [nbcliPath, ...args], {
       cwd: workspace,
-      env: { ...process.env, OPEN_SCIENCE_API_URL: apiUrl },
+      env,
       timeout: 60_000,
       maxBuffer: 10 * 1024 * 1024
     })
@@ -193,6 +196,14 @@ test('nbcli shares a real Jupyter kernel and persists exec-cell outputs', { time
           execution_count: null,
           outputs: [],
           custom_cell_field: { nested: [{ a: 1 }, { a: 1 }] }
+        },
+        {
+          id: 'large-output',
+          cell_type: 'code',
+          source: ['print("A" * 100000)\n'],
+          metadata: {},
+          execution_count: null,
+          outputs: []
         }
       ],
       custom_top_level: { keep: true }
@@ -236,6 +247,34 @@ test('nbcli shares a real Jupyter kernel and persists exec-cell outputs', { time
     assert.ok(plotCell.outputs.some((output: any) => output.output_type === 'stream' && /plot text/.test(output.text)))
     assert.ok(plotCell.outputs.some((output: any) => output.data?.['image/png']))
 
+    const cells = await runNbcli(workspace, null, ['cells', '--notebook', 't.ipynb'])
+    assert.equal(cells.code, 0, cells.stderr)
+    assert.equal(cells.stderr, '')
+    assert.match(cells.stdout, /^plot-cell  code/m)
+    assert.match(cells.stdout, /^error-cell  code/m)
+    assert.match(cells.stdout, /^large-output  code/m)
+    assert.match(cells.stdout, /^plot-cell .*outputs: .*image\/png/m)
+
+    const mediaDir = path.join(root, 'media')
+    const readPlot = await runNbcli(workspace, null, [
+      'read-cell',
+      '--notebook',
+      't.ipynb',
+      '--cell',
+      'plot-cell',
+      '--media-dir',
+      mediaDir
+    ])
+    assert.equal(readPlot.code, 0, readPlot.stderr)
+    assert.equal(readPlot.stderr, '')
+    assert.match(readPlot.stdout, /plot text/)
+    const imageMatch = readPlot.stdout.match(/\[image\/png output: \d+ bytes\] saved to: (.+\.png)/)
+    assert.ok(imageMatch, readPlot.stdout)
+    const plotImagePath = imageMatch[1]
+    assert.equal(path.dirname(plotImagePath), mediaDir)
+    const plotBytes = await readFile(plotImagePath)
+    assert.equal(plotBytes.subarray(0, 4).toString('binary'), '\x89PNG')
+
     const error = await runNbcli(workspace, stub.apiUrl, [
       'exec-cell',
       '--notebook',
@@ -251,6 +290,52 @@ test('nbcli shares a real Jupyter kernel and persists exec-cell outputs', { time
     const errorCell = saved.cells.find((cell: any) => cell.id === 'error-cell')
     assert.deepEqual(errorCell.custom_cell_field, { nested: [{ a: 1 }, { a: 1 }] })
     assert.ok(errorCell.outputs.some((output: any) => output.output_type === 'error' && output.ename === 'ValueError'))
+
+    const readError = await runNbcli(workspace, null, [
+      'read-cell',
+      '--notebook',
+      't.ipynb',
+      '--cell',
+      'error-cell'
+    ])
+    assert.equal(readError.code, 0, readError.stderr)
+    assert.equal(readError.stderr, '')
+    assert.match(readError.stdout, /ValueError: nbcli boom/)
+    assert.match(readError.stdout, /Traceback/)
+
+    const large = await runNbcli(workspace, stub.apiUrl, [
+      'exec-cell',
+      '--notebook',
+      't.ipynb',
+      '--cell',
+      'large-output'
+    ])
+    assert.equal(large.code, 0, large.stderr)
+
+    const readLargeDefault = await runNbcli(workspace, null, [
+      'read-cell',
+      '--notebook',
+      't.ipynb',
+      '--cell',
+      'large-output'
+    ])
+    assert.equal(readLargeDefault.code, 0, readLargeDefault.stderr)
+    assert.equal(readLargeDefault.stderr, '')
+    assert.match(readLargeDefault.stdout, /truncated: showing 8000 of 100001 chars/)
+
+    const readLargeFull = await runNbcli(workspace, null, [
+      'read-cell',
+      '--notebook',
+      't.ipynb',
+      '--cell',
+      'large-output',
+      '--max-output-chars',
+      '200000'
+    ])
+    assert.equal(readLargeFull.code, 0, readLargeFull.stderr)
+    assert.equal(readLargeFull.stderr, '')
+    assert.doesNotMatch(readLargeFull.stdout, /truncated: showing/)
+    assert.match(readLargeFull.stdout, /A{100000}/)
   } finally {
     if (stub) await stub.close()
     if (jupyter) {

@@ -1,7 +1,19 @@
 import assert from 'node:assert/strict'
+import { mkdtemp, rm } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 import test from 'node:test'
 
-import { parseArgs, patchCellOutputs, renderOutputText } from '../nbcli.mjs'
+import {
+  buildMediaPath,
+  parseArgs,
+  patchCellOutputs,
+  renderCellRead,
+  renderCellsOverview,
+  renderOutputText,
+  summarizeOutputs,
+  truncateMiddle
+} from '../nbcli.mjs'
 
 test('patchCellOutputs only replaces outputs and execution_count on the target cell', () => {
   const notebook = {
@@ -86,6 +98,8 @@ test('parseArgs parses exec-code and status flags', () => {
     cwd: '/tmp',
     notebook: undefined,
     cell: undefined,
+    maxOutputChars: 8000,
+    mediaDir: undefined,
     timeoutSeconds: 300,
     codeArgs: []
   })
@@ -96,7 +110,87 @@ test('parseArgs parses exec-code and status flags', () => {
     cwd: undefined,
     notebook: 't.ipynb',
     cell: undefined,
+    maxOutputChars: 8000,
+    mediaDir: undefined,
     timeoutSeconds: 5,
     codeArgs: ['print(1)']
   })
+})
+
+test('truncateMiddle passes through under budget and keeps head and tail over budget', () => {
+  assert.equal(truncateMiddle('short', 10), 'short')
+
+  const rendered = truncateMiddle('0123456789abcdefghij', 10)
+  assert.equal(rendered, '012345\n… [truncated: showing 10 of 20 chars] …\nghij')
+})
+
+test('summarizeOutputs and cells overview include mixed output kinds', () => {
+  const outputs = [
+    { output_type: 'stream', name: 'stdout', text: 'hello\n' },
+    { output_type: 'display_data', data: { 'text/plain': 'plot', 'image/png': 'abc' }, metadata: {} },
+    { output_type: 'error', ename: 'ValueError', evalue: 'bad', traceback: [] }
+  ]
+  assert.equal(summarizeOutputs(outputs), 'stream, image/png, error')
+
+  const overview = renderCellsOverview({
+    cells: [
+      {
+        id: 'mixed',
+        cell_type: 'code',
+        execution_count: 3,
+        source: ['print("x")\n'],
+        outputs
+      }
+    ]
+  })
+  assert.equal(overview, 'mixed  code  [3]  print("x")  outputs: stream, image/png, error\n')
+})
+
+test('media filename builder sanitizes notebook and cell id parts', () => {
+  const mediaPath = buildMediaPath({
+    notebookPath: 'dir/my notebook.ipynb',
+    cellId: 'cell/with spaces/☃',
+    outputIndex: 2,
+    mime: 'image/png',
+    mediaDir: '/tmp/media'
+  })
+
+  assert.equal(mediaPath, path.join('/tmp/media', 'my_notebook-cell_with_spaces__-2.png'))
+})
+
+test('renderCellRead prefers text/plain while still saving image outputs', async () => {
+  const mediaDir = await mkdtemp(path.join(os.tmpdir(), 'open-science-nbcli-unit-'))
+  try {
+    const rendered = await renderCellRead(
+      {
+        id: 'cell-1',
+        cell_type: 'code',
+        execution_count: 1,
+        source: ['display(x)\n'],
+        outputs: [
+          {
+            output_type: 'display_data',
+            data: {
+              'text/plain': 'plain repr',
+              'text/html': '<b>html repr</b>',
+              'image/png': 'iVBORw0KGgo='
+            },
+            metadata: {}
+          }
+        ]
+      },
+      {
+        maxOutputChars: 8000,
+        mediaDir,
+        notebookPath: 't.ipynb',
+        cellId: 'cell-1'
+      }
+    )
+
+    assert.match(rendered, /plain repr/)
+    assert.match(rendered, /\[image\/png output: \d+ bytes\] saved to:/)
+    assert.doesNotMatch(rendered, /html repr/)
+  } finally {
+    await rm(mediaDir, { recursive: true, force: true })
+  }
 })

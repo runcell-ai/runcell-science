@@ -11,22 +11,34 @@ Prefer `.ipynb` notebooks for analysis. Do not create throwaway analysis scripts
 
 Expected flow:
 
-1. Create or edit the notebook file first.
-2. Keep existing cell `id` values stable.
-3. Give new cells fresh unique `id` values.
-4. Run persistent cells with:
+1. Inspect existing cells with:
+
+```sh
+node "$OPEN_SCIENCE_NBCLI" cells --notebook <path>
+```
+
+2. Create or edit the notebook file first.
+3. Keep existing cell `id` values stable.
+4. Give new cells fresh unique `id` values.
+5. Run persistent cells with:
 
 ```sh
 node "$OPEN_SCIENCE_NBCLI" exec-cell --notebook <path> --cell <cell-id>
 ```
 
-5. Use quick non-persistent checks with:
+6. Read back persisted output, including plots extracted to files, with:
+
+```sh
+node "$OPEN_SCIENCE_NBCLI" read-cell --notebook <path> --cell <cell-id>
+```
+
+7. Use quick non-persistent checks with:
 
 ```sh
 node "$OPEN_SCIENCE_NBCLI" exec-code --notebook <path> "<code>"
 ```
 
-6. Diagnose setup with:
+8. Diagnose setup with:
 
 ```sh
 node "$OPEN_SCIENCE_NBCLI" status

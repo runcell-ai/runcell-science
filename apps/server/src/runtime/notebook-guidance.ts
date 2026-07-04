@@ -12,6 +12,7 @@ This workspace has a Jupyter integration with one shared kernel per notebook.
 - Flow: create or edit the notebook file first (keep existing cell ids stable; give new cells unique ids), then execute through the app CLI so outputs persist into the file and the user sees them live:
   - node "$OPEN_SCIENCE_NBCLI" exec-cell --notebook <path> --cell <cell-id>
   - node "$OPEN_SCIENCE_NBCLI" exec-code --notebook <path> "<code>" (quick check, not persisted)
+  - node "$OPEN_SCIENCE_NBCLI" cells --notebook <path>; node "$OPEN_SCIENCE_NBCLI" read-cell --notebook <path> --cell <cell-id> (inspect saved outputs; extracts plot images to files you can open)
   - node "$OPEN_SCIENCE_NBCLI" status (diagnose the environment)
 - The kernel is shared with the user's notebook panel: variables you define stay live for the user and vice versa. Do not restart the kernel unless asked.
 

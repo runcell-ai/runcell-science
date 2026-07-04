@@ -2,6 +2,7 @@
 // @ts-check
 
 import fs from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import process from 'node:process'
@@ -17,7 +18,11 @@ function usage(command = '') {
   if (command === 'exec-cell') {
     return `Usage: nbcli exec-cell ${common} --notebook <path> --cell <cell-id> [--timeout <sec>]`
   }
-  return `Usage: nbcli <command> ${common}\n\nCommands:\n  status\n  exec-code --notebook <path> [--timeout <sec>] <code...>\n  exec-cell --notebook <path> --cell <cell-id> [--timeout <sec>]`
+  if (command === 'cells') return 'Usage: nbcli cells --notebook <path> [--cwd <path>]'
+  if (command === 'read-cell') {
+    return 'Usage: nbcli read-cell --notebook <path> --cell <cell-id> [--cwd <path>] [--max-output-chars <n>] [--media-dir <dir>]'
+  }
+  return `Usage: nbcli <command> ${common}\n\nCommands:\n  status\n  cells --notebook <path> [--cwd <path>]\n  read-cell --notebook <path> --cell <cell-id> [--max-output-chars <n>] [--media-dir <dir>]\n  exec-code --notebook <path> [--timeout <sec>] <code...>\n  exec-cell --notebook <path> --cell <cell-id> [--timeout <sec>]`
 }
 
 function die(message, code = 2) {
@@ -37,6 +42,8 @@ export function parseArgs(argv) {
     cwd: undefined,
     notebook: undefined,
     cell: undefined,
+    maxOutputChars: 8000,
+    mediaDir: undefined,
     timeoutSeconds: defaultTimeoutSeconds,
     codeArgs: []
   }
@@ -55,6 +62,14 @@ export function parseArgs(argv) {
     else if (arg === '--cwd') options.cwd = requireValue(args, arg)
     else if (arg === '--notebook') options.notebook = requireValue(args, arg)
     else if (arg === '--cell') options.cell = requireValue(args, arg)
+    else if (arg === '--max-output-chars' && options.command === 'read-cell') {
+      const raw = requireValue(args, arg)
+      const parsed = Number(raw)
+      if (!Number.isInteger(parsed) || parsed <= 0) throw new Error('--max-output-chars must be a positive integer.')
+      options.maxOutputChars = parsed
+    } else if (arg === '--media-dir' && options.command === 'read-cell') {
+      options.mediaDir = requireValue(args, arg)
+    }
     else if (arg === '--timeout') {
       const raw = requireValue(args, arg)
       const parsed = Number(raw)
@@ -83,6 +98,10 @@ function stripAnsi(value) {
 
 function sourceToText(source) {
   return Array.isArray(source) ? source.join('') : String(source ?? '')
+}
+
+function joinText(value) {
+  return Array.isArray(value) ? value.join('') : String(value ?? '')
 }
 
 function isObject(value) {
@@ -133,6 +152,191 @@ export function renderOutputText(outputs) {
     }
   }
   return { stdout, stderr }
+}
+
+export function truncateMiddle(value, maxChars = 8000) {
+  const text = String(value ?? '')
+  if (text.length <= maxChars) return text
+  const headChars = Math.ceil(maxChars * 0.6)
+  const tailChars = Math.max(0, maxChars - headChars)
+  const shown = headChars + tailChars
+  return `${text.slice(0, headChars)}\n… [truncated: showing ${shown} of ${text.length} chars] …\n${tailChars > 0 ? text.slice(-tailChars) : ''}`
+}
+
+function truncateLine(value, maxChars) {
+  const text = String(value ?? '')
+  if (text.length <= maxChars) return text
+  return `${text.slice(0, Math.max(0, maxChars - 1))}…`
+}
+
+function validateNotebookCells(notebook) {
+  if (!isObject(notebook) || !Array.isArray(notebook.cells)) {
+    throw new CliError('Notebook JSON does not contain a cells array.', 2)
+  }
+  return notebook.cells.filter(isObject)
+}
+
+function notebookFileForOptions(options) {
+  if (!options.notebook) throw new CliError(`--notebook is required.\n${usage(options.command)}`, 2)
+  const cwd = resolveCwd(options.cwd)
+  const notebookPath = toPosixRelative(options.notebook, cwd)
+  return { cwd, notebookPath, notebookFile: path.join(cwd, notebookPath) }
+}
+
+function bestMimeForSummary(data) {
+  if (!isObject(data)) return null
+  const keys = Object.keys(data)
+  const image = keys.find((key) => key.startsWith('image/'))
+  if (image) return image
+  if (keys.includes('text/html')) return 'text/html'
+  if (keys.includes('text/plain')) return 'text/plain'
+  return keys[0] ?? null
+}
+
+export function summarizeOutputs(outputs) {
+  if (!Array.isArray(outputs) || outputs.length === 0) return '-'
+  const kinds = []
+  for (const output of outputs) {
+    if (!isObject(output)) continue
+    if (output.output_type === 'stream') kinds.push('stream')
+    else if (output.output_type === 'error') kinds.push('error')
+    else if (output.output_type === 'execute_result' || output.output_type === 'display_data') {
+      const mime = bestMimeForSummary(output.data)
+      if (mime) kinds.push(mime)
+    } else if (typeof output.output_type === 'string') {
+      kinds.push(output.output_type)
+    }
+  }
+  return kinds.length > 0 ? kinds.join(', ') : '-'
+}
+
+export function renderCellsOverview(notebook) {
+  const cells = validateNotebookCells(notebook)
+  if (cells.length === 0) return '(no cells)\n'
+  return cells.map((cell) => {
+    const id = String(cell.id ?? '(no-id)')
+    const type = String(cell.cell_type ?? 'unknown')
+    const executionCount = typeof cell.execution_count === 'number' ? String(cell.execution_count) : ' '
+    const firstLine = sourceToText(cell.source).split(/\r?\n/, 1)[0] ?? ''
+    const outputs = summarizeOutputs(Array.isArray(cell.outputs) ? cell.outputs : [])
+    return `${id}  ${type}  [${executionCount}]  ${truncateLine(firstLine, 60)}  outputs: ${outputs}`
+  }).join('\n') + '\n'
+}
+
+function availableCellIds(cells) {
+  return cells.slice(0, 20).map((cell) => String(cell.id ?? '(no-id)')).join(', ')
+}
+
+function findAnyCell(notebook, cellId) {
+  const cells = validateNotebookCells(notebook)
+  const cell = cells.find((candidate) => candidate.id === cellId)
+  if (!cell) {
+    const suffix = cells.length > 0 ? ` Available cell ids: ${availableCellIds(cells)}${cells.length > 20 ? ', ...' : ''}` : ' No cells are available.'
+    throw new CliError(`Cell id not found: ${cellId}.${suffix}`, 2)
+  }
+  return cell
+}
+
+export function sanitizeMediaFilenamePart(value) {
+  return String(value).replace(/[^A-Za-z0-9._-]/g, '_')
+}
+
+export function buildMediaPath({ notebookPath, cellId, outputIndex, mime, mediaDir }) {
+  const base = sanitizeMediaFilenamePart(path.basename(notebookPath, path.extname(notebookPath)))
+  const safeCellId = sanitizeMediaFilenamePart(cellId)
+  const ext = mime === 'image/svg+xml' ? 'svg' : mime.slice('image/'.length)
+  return path.join(mediaDir, `${base}-${safeCellId}-${outputIndex}.${ext}`)
+}
+
+function textFromJsonMime(value) {
+  if (typeof value === 'string') {
+    try {
+      return JSON.stringify(JSON.parse(value), null, 2)
+    } catch {
+      return value
+    }
+  }
+  return JSON.stringify(value, null, 2)
+}
+
+function formatUnknownMime(mime, value) {
+  return `[${mime} output: ${joinText(value).length} chars, not rendered]\n`
+}
+
+async function writeMediaOutput({ mime, value, notebookPath, cellId, outputIndex, mediaDir }) {
+  await fs.mkdir(mediaDir, { recursive: true })
+  const filePath = buildMediaPath({ notebookPath, cellId, outputIndex, mime, mediaDir })
+  if (mime === 'image/svg+xml') {
+    const svg = joinText(value)
+    await fs.writeFile(filePath, svg, 'utf8')
+    return `[image/svg+xml output: vector/text, ${svg.length} chars] saved to: ${filePath}\nOpen this file with your image viewing/reading tool to see the plot, or read it as text.\n`
+  }
+  const buffer = Buffer.from(joinText(value), 'base64')
+  await fs.writeFile(filePath, buffer)
+  return `[${mime} output: ${buffer.length} bytes] saved to: ${filePath}\nOpen this file with your image viewing/reading tool to see the plot.\n`
+}
+
+async function renderMimeBundle(output, context) {
+  const data = isObject(output.data) ? output.data : {}
+  const chunks = []
+  const keys = Object.keys(data)
+
+  if (keys.includes('text/plain')) {
+    chunks.push(`${truncateMiddle(joinText(data['text/plain']), context.maxOutputChars)}\n`)
+  } else if (keys.includes('application/json')) {
+    chunks.push(`${truncateMiddle(textFromJsonMime(data['application/json']), context.maxOutputChars)}\n`)
+  } else if (keys.includes('text/html')) {
+    const html = joinText(data['text/html'])
+    chunks.push(`[text/html output, ${html.length} chars — showing truncated raw]\n${truncateMiddle(html, context.maxOutputChars)}\n`)
+  }
+
+  for (const mime of ['image/png', 'image/jpeg', 'image/gif', 'image/svg+xml']) {
+    if (keys.includes(mime)) chunks.push(await writeMediaOutput({ ...context, mime, value: data[mime] }))
+  }
+
+  const rendered = new Set(['text/plain', 'application/json', 'text/html', 'image/png', 'image/jpeg', 'image/gif', 'image/svg+xml'])
+  for (const mime of keys) {
+    if (!rendered.has(mime)) chunks.push(formatUnknownMime(mime, data[mime]))
+  }
+  return chunks.join('')
+}
+
+export async function renderCellRead(cell, options) {
+  const outputs = Array.isArray(cell.outputs) ? cell.outputs : []
+  const executionCount = typeof cell.execution_count === 'number' ? cell.execution_count : null
+  const chunks = [
+    `cell: ${String(cell.id ?? '')}\n`,
+    `type: ${String(cell.cell_type ?? 'unknown')}\n`,
+    `execution_count: ${executionCount === null ? 'null' : executionCount}\n`,
+    '--- source ---\n'
+  ]
+  const source = sourceToText(cell.source)
+  chunks.push(source)
+  if (!source.endsWith('\n')) chunks.push('\n')
+
+  if (outputs.length === 0) {
+    chunks.push('(no outputs)\n')
+    return chunks.join('')
+  }
+
+  chunks.push(`--- outputs (${outputs.length}) ---\n`)
+  for (const [index, output] of outputs.entries()) {
+    if (!isObject(output)) continue
+    chunks.push(`--- output ${index + 1}: ${output.output_type ?? 'unknown'} ---\n`)
+    if (output.output_type === 'stream') {
+      if (output.name === 'stderr') chunks.push('[stderr]\n')
+      chunks.push(`${truncateMiddle(joinText(output.text), options.maxOutputChars)}\n`)
+    } else if (output.output_type === 'error') {
+      const header = `${output.ename ?? 'Error'}: ${output.evalue ?? ''}`
+      const traceback = Array.isArray(output.traceback) ? output.traceback.map(stripAnsi).join('\n') : ''
+      chunks.push(`${truncateMiddle(traceback ? `${header}\n${traceback}` : header, options.maxOutputChars)}\n`)
+    } else if (output.output_type === 'execute_result' || output.output_type === 'display_data') {
+      chunks.push(await renderMimeBundle(output, { ...options, outputIndex: index + 1 }))
+    } else {
+      chunks.push(`[${output.output_type ?? 'unknown'} output: not rendered]\n`)
+    }
+  }
+  return chunks.join('')
 }
 
 function printOutputs(outputs) {
@@ -455,6 +659,26 @@ async function runExec(options, mode) {
   if (result.status === 'error') process.exit(1)
 }
 
+async function runCells(options) {
+  const { notebookFile } = notebookFileForOptions(options)
+  const notebook = await loadNotebook(notebookFile)
+  process.stdout.write(renderCellsOverview(notebook))
+}
+
+async function runReadCell(options) {
+  if (!options.cell) throw new CliError(`--cell is required.\n${usage('read-cell')}`, 2)
+  const { cwd, notebookPath, notebookFile } = notebookFileForOptions(options)
+  const notebook = await loadNotebook(notebookFile)
+  const cell = findAnyCell(notebook, options.cell)
+  const mediaDir = path.resolve(options.mediaDir ? path.resolve(cwd, options.mediaDir) : path.join(os.tmpdir(), 'open-science-nb-media'))
+  process.stdout.write(await renderCellRead(cell, {
+    maxOutputChars: options.maxOutputChars,
+    mediaDir,
+    notebookPath,
+    cellId: options.cell
+  }))
+}
+
 class CliError extends Error {
   constructor(message, exitCode = 2) {
     super(message)
@@ -475,6 +699,8 @@ async function main() {
     return
   }
   if (options.command === 'status') return runStatus(options)
+  if (options.command === 'cells') return runCells(options)
+  if (options.command === 'read-cell') return runReadCell(options)
   if (options.command === 'exec-code') return runExec(options, 'exec-code')
   if (options.command === 'exec-cell') return runExec(options, 'exec-cell')
   throw new CliError(`Unknown command: ${options.command}\n${usage()}`, 2)
