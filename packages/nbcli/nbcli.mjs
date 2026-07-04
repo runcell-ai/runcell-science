@@ -265,14 +265,22 @@ function formatUnknownMime(mime, value) {
 
 async function writeMediaOutput({ mime, value, notebookPath, cellId, outputIndex, mediaDir }) {
   await fs.mkdir(mediaDir, { recursive: true })
+  // The default media dir is a predictable shared temp path; never write
+  // through a pre-existing symlink there (rm removes the link itself, wx
+  // guarantees we only ever create fresh files).
+  const dirStat = await fs.lstat(mediaDir)
+  if (!dirStat.isDirectory()) {
+    throw new CliError(`Media directory is not a real directory: ${mediaDir}. Pass a different --media-dir.`, 2)
+  }
   const filePath = buildMediaPath({ notebookPath, cellId, outputIndex, mime, mediaDir })
+  await fs.rm(filePath, { force: true })
   if (mime === 'image/svg+xml') {
     const svg = joinText(value)
-    await fs.writeFile(filePath, svg, 'utf8')
+    await fs.writeFile(filePath, svg, { encoding: 'utf8', flag: 'wx' })
     return `[image/svg+xml output: vector/text, ${svg.length} chars] saved to: ${filePath}\nOpen this file with your image viewing/reading tool to see the plot, or read it as text.\n`
   }
   const buffer = Buffer.from(joinText(value), 'base64')
-  await fs.writeFile(filePath, buffer)
+  await fs.writeFile(filePath, buffer, { flag: 'wx' })
   return `[${mime} output: ${buffer.length} bytes] saved to: ${filePath}\nOpen this file with your image viewing/reading tool to see the plot.\n`
 }
 
@@ -319,22 +327,36 @@ export async function renderCellRead(cell, options) {
     return chunks.join('')
   }
 
+  // The per-output cap alone does not bound the whole command: a cell can
+  // hold hundreds of just-under-budget outputs. Cap the cell total too.
+  const totalBudget = options.maxOutputChars * 4
+  let rendered = 0
+
   chunks.push(`--- outputs (${outputs.length}) ---\n`)
   for (const [index, output] of outputs.entries()) {
     if (!isObject(output)) continue
+    if (rendered >= totalBudget) {
+      const remaining = outputs.slice(index).filter(isObject)
+      chunks.push(
+        `… [${remaining.length} more output${remaining.length === 1 ? '' : 's'} omitted (${summarizeOutputs(remaining)}) — total output exceeds budget; raise --max-output-chars to see more]\n`
+      )
+      break
+    }
     chunks.push(`--- output ${index + 1}: ${output.output_type ?? 'unknown'} ---\n`)
+    let piece = ''
     if (output.output_type === 'stream') {
-      if (output.name === 'stderr') chunks.push('[stderr]\n')
-      chunks.push(`${truncateMiddle(joinText(output.text), options.maxOutputChars)}\n`)
+      piece = `${output.name === 'stderr' ? '[stderr]\n' : ''}${truncateMiddle(joinText(output.text), options.maxOutputChars)}\n`
     } else if (output.output_type === 'error') {
       const header = `${output.ename ?? 'Error'}: ${output.evalue ?? ''}`
       const traceback = Array.isArray(output.traceback) ? output.traceback.map(stripAnsi).join('\n') : ''
-      chunks.push(`${truncateMiddle(traceback ? `${header}\n${traceback}` : header, options.maxOutputChars)}\n`)
+      piece = `${truncateMiddle(traceback ? `${header}\n${traceback}` : header, options.maxOutputChars)}\n`
     } else if (output.output_type === 'execute_result' || output.output_type === 'display_data') {
-      chunks.push(await renderMimeBundle(output, { ...options, outputIndex: index + 1 }))
+      piece = await renderMimeBundle(output, { ...options, outputIndex: index + 1 })
     } else {
-      chunks.push(`[${output.output_type ?? 'unknown'} output: not rendered]\n`)
+      piece = `[${output.output_type ?? 'unknown'} output: not rendered]\n`
     }
+    chunks.push(piece)
+    rendered += piece.length
   }
   return chunks.join('')
 }

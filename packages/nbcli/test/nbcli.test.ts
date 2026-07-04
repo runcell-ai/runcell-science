@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { lstat, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -192,5 +192,52 @@ test('renderCellRead prefers text/plain while still saving image outputs', async
     assert.doesNotMatch(rendered, /html repr/)
   } finally {
     await rm(mediaDir, { recursive: true, force: true })
+  }
+})
+
+test('renderCellRead caps the whole cell at 4x the per-output budget', async () => {
+  const outputs = Array.from({ length: 10 }, (_, index) => ({
+    output_type: 'stream',
+    name: 'stdout',
+    text: `chunk-${index} ${'x'.repeat(7900)}\n`
+  }))
+  const rendered = await renderCellRead(
+    { id: 'big', cell_type: 'code', source: 'noisy()', execution_count: 1, outputs },
+    { maxOutputChars: 8000, mediaDir: os.tmpdir(), notebookPath: 't.ipynb', cellId: 'big' }
+  )
+  assert.ok(rendered.length < 8000 * 6, `rendered ${rendered.length} chars`)
+  assert.match(rendered, /more outputs? omitted \(stream/)
+  assert.match(rendered, /raise --max-output-chars/)
+})
+
+test('media extraction never writes through a pre-existing symlink', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'nbcli-symlink-'))
+  try {
+    const mediaDir = path.join(root, 'media')
+    const victim = path.join(root, 'victim.txt')
+    await writeFile(victim, 'do not touch')
+    const { mkdir } = await import('node:fs/promises')
+    await mkdir(mediaDir, { recursive: true })
+    const target = buildMediaPath({ notebookPath: 't.ipynb', cellId: 'c1', outputIndex: 1, mime: 'image/png', mediaDir })
+    await symlink(victim, target)
+
+    const rendered = await renderCellRead(
+      {
+        id: 'c1',
+        cell_type: 'code',
+        source: 'plot()',
+        execution_count: 1,
+        outputs: [{ output_type: 'display_data', data: { 'image/png': Buffer.from('png-bytes').toString('base64') }, metadata: {} }]
+      },
+      { maxOutputChars: 8000, mediaDir, notebookPath: 't.ipynb', cellId: 'c1' }
+    )
+
+    assert.match(rendered, /saved to:/)
+    assert.equal(await readFile(victim, 'utf8'), 'do not touch')
+    const stat = await lstat(target)
+    assert.equal(stat.isSymbolicLink(), false)
+    assert.equal(await readFile(target, 'utf8'), 'png-bytes')
+  } finally {
+    await rm(root, { recursive: true, force: true })
   }
 })
