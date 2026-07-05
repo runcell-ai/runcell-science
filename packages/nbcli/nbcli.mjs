@@ -228,7 +228,10 @@ function budgetOneOutputForReport(rawOutput, imageState) {
     // values are measured via JSON.stringify.
     for (const [mime, value] of Object.entries(output.data)) {
       if (mime === 'text/plain' || mime.startsWith('image/')) continue
-      const stringish = typeof value === 'string' || Array.isArray(value)
+      // nbformat text arrays are arrays OF STRINGS; json/plotly mimes may
+      // legally be arrays of objects and must be measured as JSON.
+      const stringish =
+        typeof value === 'string' || (Array.isArray(value) && value.every((part) => typeof part === 'string'))
       const text = stringish ? joinText(value) : JSON.stringify(value) ?? ''
       if (mime === 'text/html' && text.length > reportHtmlBudgetChars) {
         delete output.data[mime]

@@ -368,3 +368,20 @@ test('budgetOutputsForReport budgets object-valued JSON mimes', () => {
   assert.ok((replaced as string).length < 10_000)
   assert.match(replaced as string, /truncated: showing/)
 })
+
+test('budgetOutputsForReport measures array-of-object JSON mimes as JSON', () => {
+  const bigArray = Array.from({ length: 2000 }, (_, index) => ({ index, label: `row-${index}` }))
+  const { outputs, truncated } = budgetOutputsForReport([
+    {
+      output_type: 'execute_result',
+      execution_count: 1,
+      metadata: {},
+      data: { 'text/plain': 'plain fallback', 'application/json': bigArray }
+    }
+  ])
+
+  assert.equal(truncated, true)
+  const bundle = outputs[0] as { data: Record<string, unknown> }
+  assert.equal(bundle.data['application/json'], undefined)
+  assert.equal(bundle.data['text/plain'], 'plain fallback')
+})
