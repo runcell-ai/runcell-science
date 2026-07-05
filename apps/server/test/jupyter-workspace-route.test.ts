@@ -277,12 +277,24 @@ test('workspace execution events target running sessions, not every cwd match', 
     assert.equal(executionEvents(active.sessionId)[0].turnId, active.turnId)
     assert.equal(executionEvents(idle.sessionId).length, 0)
 
+    // Two running sessions on the same cwd: exactly one gets the event.
+    const concurrent = makeSession()
+    const both = await server.inject({ method: 'POST', url: '/api/jupyter/workspace/execution', payload: payload('c1b') })
+    assert.equal(both.statusCode, 204)
+    const concurrentTotal = executionEvents(active.sessionId).length + executionEvents(concurrent.sessionId).length
+    assert.equal(concurrentTotal, 2)
+    agentSessionService.completeTurn(concurrent.sessionId, concurrent.turnId)
+
     // With nothing running, exactly one (most recently updated) session gets
     // the event — never every cwd match.
     agentSessionService.completeTurn(active.sessionId, active.turnId)
-    const second = await server.inject({ method: 'POST', url: '/api/jupyter/workspace/execution', payload: payload('c2') })
-    assert.equal(second.statusCode, 204)
-    assert.equal(executionEvents(active.sessionId).length, 2)
+    const afterIdle = await server.inject({ method: 'POST', url: '/api/jupyter/workspace/execution', payload: payload('c2') })
+    assert.equal(afterIdle.statusCode, 204)
+    const idleTotal =
+      executionEvents(active.sessionId).length +
+      executionEvents(concurrent.sessionId).length +
+      executionEvents(idle.sessionId).length
+    assert.equal(idleTotal, 3)
     assert.equal(executionEvents(idle.sessionId).length, 0)
   } finally {
     await server.close()

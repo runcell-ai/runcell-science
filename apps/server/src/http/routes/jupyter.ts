@@ -395,15 +395,17 @@ export const jupyterRoute: FastifyPluginAsync = async (server) => {
         continue
       }
     }
-    // The card belongs to the agent turn that invoked nbcli. Fanning out to
-    // every session sharing the cwd would duplicate multi-MB payloads and
-    // surface the run in unrelated timelines — target running sessions, or
-    // fall back to the single most recently updated match (manual runs).
-    const running = matches.filter((session) => session.status === 'running')
-    const targets =
-      running.length > 0
-        ? running
-        : matches.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)).slice(0, 1)
+    // The card belongs to the agent turn that invoked nbcli, and we have no
+    // session identity in the report (cwd attribution by design). Deliver to
+    // exactly ONE session: the most recently updated running match (its turn
+    // is actively appending, so updatedAt is freshest), else the most
+    // recently updated match at all. Duplicating multi-MB payloads into
+    // every cwd sibling is always worse than a rare wrong pick between two
+    // concurrent agents in the same workspace.
+    const byUpdatedAt = (left: AgentSessionSummary, right: AgentSessionSummary) =>
+      right.updatedAt.localeCompare(left.updatedAt)
+    const running = matches.filter((session) => session.status === 'running').sort(byUpdatedAt)
+    const targets = running.length > 0 ? running.slice(0, 1) : matches.sort(byUpdatedAt).slice(0, 1)
 
     for (const session of targets) {
       const sessionDetail = agentSessionService.getSessionDetail(session.id)

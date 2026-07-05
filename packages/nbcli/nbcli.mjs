@@ -233,9 +233,13 @@ function budgetOneOutputForReport(rawOutput, imageState) {
       const stringish =
         typeof value === 'string' || (Array.isArray(value) && value.every((part) => typeof part === 'string'))
       const text = stringish ? joinText(value) : JSON.stringify(value) ?? ''
-      if (mime === 'text/html' && text.length > reportHtmlBudgetChars) {
-        delete output.data[mime]
-        truncated = true
+      if (mime === 'text/html') {
+        // All-or-nothing: truncated HTML renders as a broken partial table
+        // and the renderer prefers it over the intact text/plain fallback.
+        if (text.length > reportHtmlBudgetChars) {
+          delete output.data[mime]
+          truncated = true
+        }
         continue
       }
       if (text.length > reportTextBudgetChars) {

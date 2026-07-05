@@ -385,3 +385,19 @@ test('budgetOutputsForReport measures array-of-object JSON mimes as JSON', () =>
   assert.equal(bundle.data['application/json'], undefined)
   assert.equal(bundle.data['text/plain'], 'plain fallback')
 })
+
+test('budgetOutputsForReport keeps mid-sized html whole instead of truncating it', () => {
+  const midHtml = `<table>${'<tr><td>x</td></tr>'.repeat(600)}</table>`
+  assert.ok(midHtml.length > 4_000 && midHtml.length < 50_000)
+  const { outputs } = budgetOutputsForReport([
+    {
+      output_type: 'execute_result',
+      execution_count: 1,
+      metadata: {},
+      data: { 'text/plain': 'plain fallback', 'text/html': midHtml }
+    }
+  ])
+
+  const bundle = outputs[0] as { data: Record<string, unknown> }
+  assert.equal(bundle.data['text/html'], midHtml)
+})
