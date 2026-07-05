@@ -7,6 +7,7 @@ import { initialWorkspaceState, workspaceReducer } from '../lib/workspace-state'
 export interface SendMessageConfig {
   provider: AgentProvider
   cwd: string
+  model: string | null
 }
 
 /**
@@ -62,6 +63,7 @@ export function useWorkspace() {
           provider: config.provider,
           cwd: config.cwd.trim(),
           initialMessage: text,
+          model: config.model,
           runtimeMode: 'full_access'
         })
         setMessageDraft('')

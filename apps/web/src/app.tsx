@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { AgentProvider } from '@open-science/contracts'
 import {
   AgentConversationHeader,
   AgentErrorBanner,
+  AgentModelSelector,
   AgentPromptComposer,
   AgentRuntimeConfig,
   AgentSessionSidebar,
@@ -15,7 +16,7 @@ import {
   displaySessionTitle,
   providerLabel
 } from '@open-science/ui'
-import type { AgentProviderOption } from '@open-science/ui'
+import type { AgentModelChoice } from '@open-science/ui'
 import { ArtifactsPanel } from './artifacts-panel'
 import { ConnectorsPanel } from './connectors-panel'
 import { SessionConnectorsMenu } from './session-connectors-menu'
@@ -26,19 +27,19 @@ import { useSessionList } from './hooks/use-session-list'
 import { useSessionStream } from './hooks/use-session-stream'
 import { useSkills } from './hooks/use-skills'
 import { useWorkspace } from './hooks/use-workspace'
-import { apiBaseUrl } from './lib/api'
-import { persistCwd, readStoredCwd } from './lib/storage'
+import { api, apiBaseUrl } from './lib/api'
+import { fallbackModelOptions, mergeModelOptions } from './lib/models'
+import { persistCwd, persistModelChoice, readStoredCwd, readStoredModelChoice } from './lib/storage'
 import { NotebookExecutionCard } from './notebook/execution-card'
 import './app.css'
 
-const providerOptions: AgentProviderOption[] = [
-  { value: 'codex', label: 'Codex' },
-  { value: 'claude', label: 'Claude Code' }
-]
+const storedModelChoice = readStoredModelChoice()
 
 function App() {
   const isNarrow = useIsNarrow()
-  const [provider, setProvider] = useState<AgentProvider>('codex')
+  const [provider, setProvider] = useState<AgentProvider>(storedModelChoice?.provider ?? 'codex')
+  const [model, setModel] = useState<string | null>(storedModelChoice?.model ?? null)
+  const [modelOptions, setModelOptions] = useState(fallbackModelOptions)
   const [cwd, setCwd] = useState(readStoredCwd)
   const [connectorsOpen, setConnectorsOpen] = useState(false)
   const [skillsOpen, setSkillsOpen] = useState(false)
@@ -51,12 +52,40 @@ function App() {
     onTurnFinished: () => void sessionList.refresh({ silent: true })
   })
 
+  useEffect(() => {
+    let cancelled = false
+    api
+      .listModels()
+      .then((response) => {
+        if (!cancelled && response.models.length > 0) {
+          setModelOptions(mergeModelOptions(response.models, fallbackModelOptions))
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setModelOptions(fallbackModelOptions)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const updateCwd = (value: string) => {
     setCwd(value)
     persistCwd(value)
   }
 
+  const updateModelChoice = (choice: AgentModelChoice) => {
+    setProvider(choice.provider)
+    setModel(choice.model)
+    persistModelChoice(choice)
+  }
+
   const activeProvider = workspace.detail?.session.provider ?? provider
+  // Agent + model are locked once a session exists; drafts stay editable.
+  const selectedModel = workspace.detail ? workspace.detail.session.model : model
+  const modelSelectorDisabled = !workspace.isDraft || workspace.isSending
   const activeCwd = workspace.detail?.session.cwd ?? (cwd.trim().length > 0 ? cwd : null)
   const composerSkills = useSkills({
     provider: activeProvider,
@@ -135,13 +164,9 @@ function App() {
 
               {workspace.isDraft ? (
                 <AgentRuntimeConfig
-                  providerOptions={providerOptions}
-                  selectedProvider={provider}
                   isDraft={workspace.isDraft}
-                  isSending={workspace.isSending}
                   cwd={cwd}
                   activeCwd={workspace.detail?.session.cwd}
-                  onProviderChange={setProvider}
                   onCwdChange={updateCwd}
                 />
               ) : null}
@@ -177,8 +202,17 @@ function App() {
               disabled={workspace.isSending || workspace.running}
               skills={composerSkills.map((skill) => ({ name: skill.name, description: skill.description }))}
               skillTrigger={activeProvider === 'codex' ? '$' : '/'}
+              footerSlot={
+                <AgentModelSelector
+                  options={modelOptions}
+                  selectedProvider={activeProvider}
+                  selectedModel={selectedModel}
+                  disabled={modelSelectorDisabled}
+                  onChange={updateModelChoice}
+                />
+              }
               onValueChange={workspace.setMessageDraft}
-              onSubmit={() => void workspace.sendMessage({ provider, cwd })}
+              onSubmit={() => void workspace.sendMessage({ provider, cwd, model })}
             />
           </ResizablePanel>
 

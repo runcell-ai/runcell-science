@@ -5,6 +5,7 @@ import { registerServerPlugins } from './plugins/placeholder'
 import { healthRoute } from './routes/health'
 import { jupyterRoute } from './routes/jupyter'
 import { mcpRoute } from './routes/mcp'
+import { modelsRoute } from './routes/models'
 import { sessionsRoute } from './routes/sessions'
 import { skillsRoute } from './routes/skills'
 
@@ -18,6 +19,7 @@ export function createServer() {
   return server
     .register(healthRoute)
     .register(mcpRoute)
+    .register(modelsRoute)
     .register(sessionsRoute)
     .register(jupyterRoute)
     .register(skillsRoute)

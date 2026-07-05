@@ -313,6 +313,13 @@ body {
   overflow: hidden;
 }
 
+.agent-demo-runtime {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+}
+
 .theme-preview-surface {
   min-height: 96px;
   border: 1px solid var(--border);

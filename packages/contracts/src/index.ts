@@ -18,6 +18,19 @@ export type AgentProvider = 'codex' | 'claude'
 
 export type AgentRuntimeMode = 'full_access' | 'default'
 
+export interface AgentModelOption {
+  provider: AgentProvider
+  /** null means "use the provider/runtime configured default model". */
+  model: string | null
+  label: string
+  hint?: string
+}
+
+export interface ListAgentModelsResponse {
+  models: AgentModelOption[]
+  warnings: string[]
+}
+
 export type AgentSessionStatus =
   | 'pending_activation'
   | 'ready'

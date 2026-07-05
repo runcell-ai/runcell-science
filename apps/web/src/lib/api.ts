@@ -13,6 +13,7 @@ import type {
   ImportMcpServersResponse,
   ImportSkillRequest,
   ImportSkillResponse,
+  ListAgentModelsResponse,
   ListAgentSessionsResponse,
   ListMcpServersResponse,
   ListSkillsResponse,
@@ -53,6 +54,8 @@ export function toErrorMessage(error: unknown): string {
 
 export const api = {
   listSessions: () => requestJson<ListAgentSessionsResponse>('/api/sessions'),
+
+  listModels: () => requestJson<ListAgentModelsResponse>('/api/models'),
 
   getSessionDetail: (sessionId: string) => requestJson<AgentSessionDetail>(`/api/sessions/${sessionId}`),
 

@@ -5,12 +5,22 @@ import type {
   AgentMessage,
   NotebookExecutionDetail,
   AgentPendingRequest,
-  AgentProvider
+  AgentProvider,
+  AgentModelOption as ContractAgentModelOption
 } from '@open-science/contracts'
 
 export type AgentProviderOption = {
   value: AgentProvider
   label: string
+}
+
+/** A selectable agent+model pair for the composer model picker. */
+export type AgentModelOption = ContractAgentModelOption
+
+/** The agent+model chosen from the model picker. */
+export type AgentModelChoice = {
+  provider: AgentProvider
+  model: string | null
 }
 
 export type AgentConnectionStatus = 'idle' | 'connecting' | 'live' | 'error'

@@ -13,6 +13,7 @@ import {
 import {
   AgentConversationHeader,
   AgentErrorBanner,
+  AgentModelSelector,
   AgentPromptComposer,
   AgentRuntimeConfig,
   AgentSessionSidebar,
@@ -37,7 +38,7 @@ import {
   TooltipProvider,
   TooltipTrigger
 } from '../index'
-import type { AgentProviderOption, AgentTimelineItem } from '../index'
+import type { AgentModelChoice, AgentModelOption, AgentProviderOption, AgentTimelineItem } from '../index'
 
 type ThemeMode = 'light' | 'dark' | 'system'
 
@@ -99,6 +100,16 @@ const themeOptions: Array<{
 const galleryProviderOptions: AgentProviderOption[] = [
   { value: 'codex', label: 'Codex' },
   { value: 'claude', label: 'Claude Code' }
+]
+
+const galleryModelOptions: AgentModelOption[] = [
+  { provider: 'codex', model: null, label: 'Default', hint: 'CLI default' },
+  { provider: 'codex', model: 'gpt-5-codex', label: 'GPT-5 Codex' },
+  { provider: 'codex', model: 'gpt-5', label: 'GPT-5' },
+  { provider: 'claude', model: null, label: 'Default', hint: 'CLI default' },
+  { provider: 'claude', model: 'opus', label: 'Opus' },
+  { provider: 'claude', model: 'sonnet', label: 'Sonnet' },
+  { provider: 'claude', model: 'haiku', label: 'Haiku' }
 ]
 
 const gallerySessions: AgentSessionSummary[] = [
@@ -215,7 +226,13 @@ function Gallery() {
   const [activeGroup, setActiveGroup] = useState(groups[0].id)
   const [activeSessionId, setActiveSessionId] = useState(gallerySessions[0].id)
   const [selectedProvider, setSelectedProvider] = useState(galleryProviderOptions[0].value)
+  const [selectedModel, setSelectedModel] = useState<string | null>(null)
   const [cwd, setCwd] = useState('/Users/example/open-science')
+
+  const handleModelChoice = (choice: AgentModelChoice) => {
+    setSelectedProvider(choice.provider)
+    setSelectedModel(choice.model)
+  }
   const [promptDraft, setPromptDraft] = useState(
     'Summarize the current runtime events and suggest the next UI extraction.'
   )
@@ -337,16 +354,15 @@ function Gallery() {
                       <h3>Runtime Config</h3>
                       <span>draft setup</span>
                     </header>
-                    <AgentRuntimeConfig
-                      providerOptions={galleryProviderOptions}
-                      selectedProvider={selectedProvider}
-                      isDraft
-                      isSending={false}
-                      cwd={cwd}
-                      activeCwd={cwd}
-                      onProviderChange={setSelectedProvider}
-                      onCwdChange={setCwd}
-                    />
+                    <div className="agent-demo-runtime">
+                      <AgentModelSelector
+                        options={galleryModelOptions}
+                        selectedProvider={selectedProvider}
+                        selectedModel={selectedModel}
+                        onChange={handleModelChoice}
+                      />
+                      <AgentRuntimeConfig isDraft cwd={cwd} activeCwd={cwd} onCwdChange={setCwd} />
+                    </div>
                   </article>
                 </>
               )}
@@ -363,6 +379,14 @@ function Gallery() {
                       canSend={promptDraft.trim().length > 0}
                       isSending={false}
                       disabled={false}
+                      footerSlot={
+                        <AgentModelSelector
+                          options={galleryModelOptions}
+                          selectedProvider={selectedProvider}
+                          selectedModel={selectedModel}
+                          onChange={handleModelChoice}
+                        />
+                      }
                       onValueChange={setPromptDraft}
                       onSubmit={() => undefined}
                     />

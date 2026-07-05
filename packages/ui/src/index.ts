@@ -1,5 +1,7 @@
 export { cn } from './lib/utils'
 export { Button, buttonVariants } from './components/ui/button'
+export { EditableInput } from './components/ui/editable-input'
+export type { EditableInputHandle } from './components/ui/editable-input'
 export { Input } from './components/ui/input'
 export {
   ResizableHandle,
@@ -29,6 +31,7 @@ export {
   AgentConversationHeader,
   AgentDiffView,
   AgentErrorBanner,
+  AgentModelSelector,
   AgentPromptComposer,
   AgentRuntimeConfig,
   AgentSessionSidebar,
@@ -41,6 +44,9 @@ export {
 } from './components/agent'
 export type {
   AgentConnectionStatus,
+  AgentModelChoice,
+  AgentModelOption,
+  AgentModelSelectorProps,
   ComposerSkill,
   AgentProviderOption,
   AgentRequestDecision,

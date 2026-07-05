@@ -1,9 +1,10 @@
 import { useMemo, useRef, useState } from 'react'
-import type { ChangeEvent, FormEvent, KeyboardEvent } from 'react'
+import type { FormEvent, KeyboardEvent, ReactNode } from 'react'
 import { Loader2, Send } from 'lucide-react'
 
 import { Button } from '../ui/button'
-import { Textarea } from '../ui/textarea'
+import { EditableInput } from '../ui/editable-input'
+import type { EditableInputHandle } from '../ui/editable-input'
 
 type ComposerSkill = {
   name: string
@@ -18,6 +19,8 @@ type AgentPromptComposerProps = {
   placeholder?: string
   skills?: ComposerSkill[]
   skillTrigger?: string
+  /** Rendered at the start (left) of the footer, e.g. the agent+model picker. */
+  footerSlot?: ReactNode
   onValueChange: (value: string) => void
   onSubmit: () => void
 }
@@ -40,10 +43,11 @@ function AgentPromptComposer({
   placeholder = 'Describe the task for the agent',
   skills,
   skillTrigger,
+  footerSlot,
   onValueChange,
   onSubmit
 }: AgentPromptComposerProps) {
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const editableRef = useRef<EditableInputHandle | null>(null)
   const [menu, setMenu] = useState<SkillMenuState | null>(null)
   const [selectedIndex, setSelectedIndex] = useState(0)
 
@@ -88,9 +92,9 @@ function AgentPromptComposer({
     }
   }
 
-  function handleChange(event: ChangeEvent<HTMLTextAreaElement>) {
-    onValueChange(event.target.value)
-    updateMenuFromCaret(event.target.value, event.target.selectionStart ?? event.target.value.length)
+  function handleChange(nextValue: string, caret: number) {
+    onValueChange(nextValue)
+    updateMenuFromCaret(nextValue, caret)
   }
 
   function pickSkill(skill: ComposerSkill) {
@@ -103,11 +107,8 @@ function AgentPromptComposer({
     setMenu(null)
     const nextCaret = menu.triggerStart + insertion.length
     requestAnimationFrame(() => {
-      const node = textareaRef.current
-      if (node) {
-        node.focus()
-        node.setSelectionRange(nextCaret, nextCaret)
-      }
+      editableRef.current?.focus()
+      editableRef.current?.setCaret(nextCaret)
     })
   }
 
@@ -118,7 +119,12 @@ function AgentPromptComposer({
     }
   }
 
-  function handleDraftKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+  function handleDraftKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    // Never steal keys while an IME composition is being confirmed.
+    if (event.nativeEvent.isComposing) {
+      return
+    }
+
     if (menuVisible) {
       if (event.key === 'ArrowDown') {
         event.preventDefault()
@@ -176,26 +182,29 @@ function AgentPromptComposer({
           ))}
         </div>
       ) : null}
-      <Textarea
-        ref={textareaRef}
+      <EditableInput
+        ref={editableRef}
         className="composer-input"
-        rows={3}
+        ariaLabel="Message"
         placeholder={placeholder}
         value={value}
+        disabled={disabled}
         onChange={handleChange}
         onKeyDown={handleDraftKeyDown}
-        disabled={disabled}
       />
       <div className="composer-footer">
-        <span className="composer-hint">
-          <kbd>⌘</kbd>
-          <kbd>↵</kbd>
-          to send
-        </span>
-        <Button type="submit" size="sm" disabled={!canSend}>
-          {isSending ? <Loader2 className="spin-icon" /> : <Send />}
-          Send
-        </Button>
+        <div className="composer-footer-lead">{footerSlot}</div>
+        <div className="composer-footer-actions">
+          <span className="composer-hint">
+            <kbd>⌘</kbd>
+            <kbd>↵</kbd>
+            to send
+          </span>
+          <Button type="submit" size="sm" disabled={!canSend}>
+            {isSending ? <Loader2 className="spin-icon" /> : <Send />}
+            Send
+          </Button>
+        </div>
       </div>
     </form>
   )

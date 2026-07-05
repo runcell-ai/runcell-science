@@ -502,7 +502,7 @@
 
 .runtime-config {
   display: grid;
-  grid-template-columns: minmax(160px, 0.45fr) minmax(220px, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   padding: 12px 0 2px;
 }
@@ -988,29 +988,47 @@
   border: 1px solid var(--input);
   border-radius: var(--radius-lg);
   background: var(--surface);
-  transition:
-    border-color 120ms ease,
-    box-shadow 120ms ease;
-}
-
-.composer:focus-within {
-  border-color: var(--ring);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring), transparent 85%);
+  transition: border-color 120ms ease;
 }
 
 .composer .composer-input {
+  position: relative;
   min-height: 68px;
+  max-height: 240px;
+  overflow-y: auto;
   border: 0;
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   background: transparent;
   box-shadow: none;
   padding: 10px 12px 6px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--foreground);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  outline: none;
+  cursor: text;
 }
 
-.composer .composer-input:focus-visible {
-  border: 0;
-  box-shadow: none;
-  outline: none;
+/*
+ * Placeholder overlay. Absolutely positioned so it never sits in the text flow
+ * (which would push the caret past it). Hidden as soon as there is content or an
+ * IME composition is in progress.
+ */
+.composer .composer-input[data-empty='true']:not([data-composing='true'])::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  right: 12px;
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+
+.composer .composer-input[contenteditable='false'] {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .composer-footer {
@@ -1019,6 +1037,18 @@
   justify-content: space-between;
   gap: 10px;
   padding: 4px 8px 8px 12px;
+}
+
+.composer-footer-lead {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.composer-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .composer-hint {
@@ -1038,6 +1068,148 @@
   font-family: var(--font-mono);
   font-size: 10px;
   line-height: 1.4;
+}
+
+/* Agent + model picker (composer footer) */
+.model-selector {
+  position: relative;
+  min-width: 0;
+}
+
+.model-selector-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.model-selector-trigger:hover:not(:disabled) {
+  background: var(--muted);
+}
+
+.model-selector-trigger[aria-expanded='true'] {
+  background: var(--muted);
+  border-color: var(--ring);
+}
+
+.model-selector-trigger:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.model-selector-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+
+.model-selector-agent {
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+.model-selector-model {
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.model-selector-caret {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+
+.model-selector-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  min-width: 232px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.model-selector-group + .model-selector-group {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.model-selector-group-label {
+  padding: 5px 8px 3px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted-foreground);
+}
+
+.model-selector-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: calc(var(--radius-md) - 2px);
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.model-selector-option:hover {
+  background: var(--muted);
+}
+
+.model-selector-option.is-selected {
+  background: color-mix(in oklch, var(--primary), var(--background) 90%);
+}
+
+.model-selector-option-label {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.model-selector-option-hint {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+
+.model-selector-check {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--primary);
+}
+
+.model-selector-check.is-hidden {
+  visibility: hidden;
 }
 
 /* ------------------------------------------------------------------ */
