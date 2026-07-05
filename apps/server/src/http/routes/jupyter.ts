@@ -385,15 +385,27 @@ export const jupyterRoute: FastifyPluginAsync = async (server) => {
       return reply.code(400).send({ error: detail } satisfies ApiErrorResponse)
     }
 
+    const matches: AgentSessionSummary[] = []
     for (const session of agentSessionService.listVisibleSessions()) {
       try {
-        if (fs.realpathSync(session.cwd) !== cwd) {
-          continue
+        if (fs.realpathSync(session.cwd) === cwd) {
+          matches.push(session)
         }
       } catch {
         continue
       }
+    }
+    // The card belongs to the agent turn that invoked nbcli. Fanning out to
+    // every session sharing the cwd would duplicate multi-MB payloads and
+    // surface the run in unrelated timelines — target running sessions, or
+    // fall back to the single most recently updated match (manual runs).
+    const running = matches.filter((session) => session.status === 'running')
+    const targets =
+      running.length > 0
+        ? running
+        : matches.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)).slice(0, 1)
 
+    for (const session of targets) {
       const sessionDetail = agentSessionService.getSessionDetail(session.id)
       const runningTurn = sessionDetail?.turns.find((turn) => turn.status === 'running') ?? null
       agentSessionService.recordNotebookExecution({

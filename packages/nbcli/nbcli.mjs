@@ -9,6 +9,9 @@ import process from 'node:process'
 
 const defaultTimeoutSeconds = 300
 const reportTextBudgetChars = 4_000
+// Truncated HTML renders as a broken table; beyond this we drop the html key
+// and let the text/plain fallback carry the output.
+const reportHtmlBudgetChars = 50_000
 const reportImageBudgetChars = 2_000_000
 const reportMaxImageOutputs = 3
 const reportMaxOutputs = 20
@@ -217,6 +220,24 @@ function budgetOneOutputForReport(rawOutput, imageState) {
       const next = truncateTextField(output.data['text/plain'])
       output.data['text/plain'] = next.value
       truncated = truncated || next.truncated
+    }
+
+    // Non-image renderable mimes must be budgeted too: a pandas/Styler table
+    // can carry megabytes of text/html that would otherwise ride the report
+    // into the DB, SSE, and the timeline renderer untouched.
+    for (const [mime, value] of Object.entries(output.data)) {
+      if (mime === 'text/plain' || mime.startsWith('image/')) continue
+      const text = joinText(value)
+      if (mime === 'text/html' && text.length > reportHtmlBudgetChars) {
+        delete output.data[mime]
+        truncated = true
+        continue
+      }
+      if (text.length > reportTextBudgetChars) {
+        const next = truncateTextField(text)
+        output.data[mime] = next.value
+        truncated = true
+      }
     }
 
     for (const [mime, value] of Object.entries(output.data)) {

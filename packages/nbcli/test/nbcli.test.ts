@@ -298,3 +298,30 @@ test('media extraction never writes through a pre-existing symlink', async () =>
     await rm(root, { recursive: true, force: true })
   }
 })
+
+test('budgetOutputsForReport budgets html and other non-image mimes', () => {
+  const bigHtml = `<table>${'<tr><td>x</td></tr>'.repeat(5000)}</table>`
+  const smallHtml = '<b>ok</b>'
+  const bigJson = 'y'.repeat(10_000)
+  const { outputs, truncated } = budgetOutputsForReport([
+    {
+      output_type: 'execute_result',
+      execution_count: 1,
+      metadata: {},
+      data: { 'text/plain': 'plain table repr', 'text/html': bigHtml }
+    },
+    {
+      output_type: 'display_data',
+      metadata: {},
+      data: { 'text/html': smallHtml, 'text/latex': bigJson }
+    }
+  ])
+
+  assert.equal(truncated, true)
+  const first = outputs[0] as { data: Record<string, unknown> }
+  assert.equal(first.data['text/html'], undefined)
+  assert.equal(first.data['text/plain'], 'plain table repr')
+  const second = outputs[1] as { data: Record<string, unknown> }
+  assert.equal(second.data['text/html'], smallHtml)
+  assert.match(String(second.data['text/latex']), /truncated: showing/)
+})

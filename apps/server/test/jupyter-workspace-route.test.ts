@@ -230,6 +230,66 @@ test('workspace execution endpoint persists detailJson and publishes notebook.ex
   }
 })
 
+test('workspace execution events target running sessions, not every cwd match', async () => {
+  const workspace = mkdtempSync(path.join(os.tmpdir(), 'open-science-jupyter-route-target-'))
+  const server = await makeServer()
+  try {
+    const makeSession = () => {
+      const response = agentSessionService.createPendingSessionForInitialMessage({
+        provider: 'codex',
+        cwd: workspace,
+        initialMessage: 'run notebook',
+        model: null,
+        runtimeMode: 'full_access'
+      })
+      const turn = response.detail.turns[0]
+      assert.ok(turn)
+      agentSessionService.appendAssistantMessageDelta({
+        sessionId: response.sessionId,
+        turnId: turn.id,
+        provider: 'codex',
+        delta: 'working',
+        providerItemId: 'assistant'
+      })
+      return { sessionId: response.sessionId, turnId: turn.id }
+    }
+    const payload = (cellId: string) => ({
+      cwd: workspace,
+      notebook: 't.ipynb',
+      mode: 'exec-cell',
+      cellId,
+      status: 'ok',
+      executionCount: 1,
+      durationMs: 5,
+      outputs: [],
+      truncated: false
+    })
+    const executionEvents = (sessionId: string) =>
+      agentSessionService.getSessionDetail(sessionId)?.events.filter((e) => e.eventType === 'notebook.execution') ?? []
+
+    const idle = makeSession()
+    agentSessionService.completeTurn(idle.sessionId, idle.turnId)
+    const active = makeSession()
+
+    const first = await server.inject({ method: 'POST', url: '/api/jupyter/workspace/execution', payload: payload('c1') })
+    assert.equal(first.statusCode, 204)
+    assert.equal(executionEvents(active.sessionId).length, 1)
+    assert.equal(executionEvents(active.sessionId)[0].turnId, active.turnId)
+    assert.equal(executionEvents(idle.sessionId).length, 0)
+
+    // With nothing running, exactly one (most recently updated) session gets
+    // the event — never every cwd match.
+    agentSessionService.completeTurn(active.sessionId, active.turnId)
+    const second = await server.inject({ method: 'POST', url: '/api/jupyter/workspace/execution', payload: payload('c2') })
+    assert.equal(second.statusCode, 204)
+    assert.equal(executionEvents(active.sessionId).length, 2)
+    assert.equal(executionEvents(idle.sessionId).length, 0)
+  } finally {
+    await server.close()
+    rmSync(workspace, { recursive: true, force: true })
+  }
+})
+
 test('knownWorkspaceRealpathForCwd matches by realpath', () => {
   const workspace = mkdtempSync(path.join(os.tmpdir(), 'open-science-jupyter-route-known-'))
   try {
