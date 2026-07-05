@@ -11,12 +11,21 @@ process.env.CHECKPOINT_GIT_DIR = path.join(os.tmpdir(), `open-science-jupyter-ro
 process.env.SERVER_PORT = '27991'
 process.env.LOG_LEVEL = 'silent'
 
-const [{ runMigrations }, { closeDb, getDb }, { jupyterRoute, knownWorkspaceRealpathForCwd }, { agentIntegrationEnv }] =
+const [
+  { runMigrations },
+  { closeDb, getDb },
+  { jupyterRoute, knownWorkspaceRealpathForCwd },
+  { agentIntegrationEnv },
+  { agentSessionService },
+  { sessionEventBus }
+] =
   await Promise.all([
     import('../src/db/migrate'),
     import('../src/db/connection'),
     import('../src/http/routes/jupyter'),
-    import('../src/runtime/env-utils')
+    import('../src/runtime/env-utils'),
+    import('../src/services'),
+    import('../src/runtime')
   ])
 
 test.before(async () => {
@@ -77,6 +86,145 @@ test('workspace jupyter endpoints 404 for cwd not attached to a known visible se
     assert.equal(ensure.statusCode, 404)
     assert.equal(ensure.json().error.code, 'not_found')
   } finally {
+    await server.close()
+    rmSync(workspace, { recursive: true, force: true })
+  }
+})
+
+test('workspace execution endpoint rejects unknown cwd and bad payloads', async () => {
+  const workspace = mkdtempSync(path.join(os.tmpdir(), 'open-science-jupyter-route-exec-bad-'))
+  const server = await makeServer()
+  try {
+    const unknown = await server.inject({
+      method: 'POST',
+      url: '/api/jupyter/workspace/execution',
+      payload: {
+        cwd: workspace,
+        notebook: 't.ipynb',
+        mode: 'exec-cell',
+        cellId: 'cell-1',
+        status: 'ok',
+        executionCount: 1,
+        durationMs: 5,
+        outputs: [],
+        truncated: false
+      }
+    })
+    assert.equal(unknown.statusCode, 404)
+
+    const response = agentSessionService.createPendingSessionForInitialMessage({
+      provider: 'codex',
+      cwd: workspace,
+      initialMessage: 'run notebook',
+      model: null,
+      runtimeMode: 'full_access'
+    })
+    const turn = response.detail.turns[0]
+    assert.ok(turn)
+    agentSessionService.appendAssistantMessageDelta({
+      sessionId: response.sessionId,
+      turnId: turn.id,
+      provider: 'codex',
+      delta: 'working',
+      providerItemId: 'assistant'
+    })
+
+    const badNotebook = await server.inject({
+      method: 'POST',
+      url: '/api/jupyter/workspace/execution',
+      payload: {
+        cwd: workspace,
+        notebook: '../bad.ipynb',
+        mode: 'exec-cell',
+        cellId: 'cell-1',
+        status: 'ok',
+        executionCount: 1,
+        durationMs: 5,
+        outputs: [],
+        truncated: false
+      }
+    })
+    assert.equal(badNotebook.statusCode, 400)
+
+    const badMode = await server.inject({
+      method: 'POST',
+      url: '/api/jupyter/workspace/execution',
+      payload: {
+        cwd: workspace,
+        notebook: 't.ipynb',
+        mode: 'run-cell',
+        cellId: 'cell-1',
+        status: 'ok',
+        executionCount: 1,
+        durationMs: 5,
+        outputs: [],
+        truncated: false
+      }
+    })
+    assert.equal(badMode.statusCode, 400)
+  } finally {
+    await server.close()
+    rmSync(workspace, { recursive: true, force: true })
+  }
+})
+
+test('workspace execution endpoint persists detailJson and publishes notebook.execution', async () => {
+  const workspace = mkdtempSync(path.join(os.tmpdir(), 'open-science-jupyter-route-exec-'))
+  const server = await makeServer()
+  let unsubscribe: (() => void) | null = null
+  try {
+    const response = agentSessionService.createPendingSessionForInitialMessage({
+      provider: 'codex',
+      cwd: workspace,
+      initialMessage: 'run notebook',
+      model: null,
+      runtimeMode: 'full_access'
+    })
+    const turn = response.detail.turns[0]
+    assert.ok(turn)
+    agentSessionService.appendAssistantMessageDelta({
+      sessionId: response.sessionId,
+      turnId: turn.id,
+      provider: 'codex',
+      delta: 'working',
+      providerItemId: 'assistant'
+    })
+
+    const published: unknown[] = []
+    unsubscribe = sessionEventBus.subscribe(response.sessionId, (event) => published.push(event))
+
+    const execution = await server.inject({
+      method: 'POST',
+      url: '/api/jupyter/workspace/execution',
+      payload: {
+        cwd: workspace,
+        notebook: 'reports/t.ipynb',
+        mode: 'exec-cell',
+        cellId: 'plot-cell',
+        status: 'ok',
+        executionCount: 7,
+        durationMs: 12,
+        outputs: [{ output_type: 'stream', name: 'stdout', text: 'hello\n' }],
+        truncated: false
+      }
+    })
+    assert.equal(execution.statusCode, 204)
+
+    const detail = agentSessionService.getSessionDetail(response.sessionId)
+    const event = detail?.events.find((entry) => entry.eventType === 'notebook.execution')
+    assert.ok(event)
+    assert.equal(event.turnId, turn.id)
+    assert.equal(event.title, 'Notebook execution')
+    assert.equal(event.summary, 'reports/t.ipynb · plot-cell · ok')
+    assert.equal(event.status, 'ok')
+    assert.equal(JSON.parse(event.detailJson ?? '{}').outputs[0].text, 'hello\n')
+
+    const sse = published.find((entry: any) => entry.type === 'notebook.execution') as any
+    assert.ok(sse)
+    assert.equal(sse.event.id, event.id)
+    assert.equal(JSON.parse(sse.event.detailJson).notebook, 'reports/t.ipynb')
+  } finally {
+    unsubscribe?.()
     await server.close()
     rmSync(workspace, { recursive: true, force: true })
   }

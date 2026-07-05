@@ -6,6 +6,7 @@ import test from 'node:test'
 
 import {
   buildMediaPath,
+  budgetOutputsForReport,
   parseArgs,
   patchCellOutputs,
   renderCellRead,
@@ -122,6 +123,62 @@ test('truncateMiddle passes through under budget and keeps head and tail over bu
 
   const rendered = truncateMiddle('0123456789abcdefghij', 10)
   assert.equal(rendered, '012345\n… [truncated: showing 10 of 20 chars] …\nghij')
+})
+
+test('budgetOutputsForReport truncates long text output fields', () => {
+  const report = budgetOutputsForReport([
+    { output_type: 'stream', name: 'stdout', text: 'A'.repeat(5_000) },
+    { output_type: 'execute_result', data: { 'text/plain': 'B'.repeat(5_000) }, metadata: {}, execution_count: 1 },
+    { output_type: 'error', ename: 'ValueError', evalue: 'bad', traceback: ['C'.repeat(5_000)] }
+  ])
+
+  assert.equal(report.truncated, true)
+  assert.match(report.outputs[0]?.text as string, /truncated: showing 4000 of 5000 chars/)
+  assert.match((report.outputs[1]?.data as any)['text/plain'], /truncated: showing 4000 of 5000 chars/)
+  assert.match((report.outputs[2]?.traceback as string[]).join('\n'), /truncated: showing 4000 of 5000 chars/)
+})
+
+test('budgetOutputsForReport keeps at most three images and replaces extras', () => {
+  const outputs = Array.from({ length: 5 }, (_, index) => ({
+    output_type: 'display_data',
+    data: { 'image/png': Buffer.from(`image-${index}`).toString('base64') },
+    metadata: {}
+  }))
+
+  const report = budgetOutputsForReport(outputs)
+
+  assert.equal(report.truncated, true)
+  assert.equal(report.outputs.filter((output) => (output.data as any)?.['image/png']).length, 3)
+  assert.equal(report.outputs.filter((output) => output.output_type === 'stream' && /\[image dropped:/.test(String(output.text))).length, 2)
+})
+
+test('budgetOutputsForReport trims to twenty outputs with an omission marker', () => {
+  const outputs = Array.from({ length: 25 }, (_, index) => ({
+    output_type: 'stream',
+    name: 'stdout',
+    text: `line ${index}\n`
+  }))
+
+  const report = budgetOutputsForReport(outputs)
+
+  assert.equal(report.truncated, true)
+  assert.equal(report.outputs.length, 20)
+  assert.match(String(report.outputs.at(-1)?.text), /\[6 more outputs omitted\]/)
+})
+
+test('budgetOutputsForReport drops oversized trailing outputs below the payload budget', () => {
+  const report = budgetOutputsForReport([
+    { output_type: 'stream', name: 'stdout', text: 'small\n' },
+    {
+      output_type: 'display_data',
+      data: { 'application/json': { value: 'X'.repeat(6 * 1024 * 1024) } },
+      metadata: {}
+    }
+  ])
+
+  assert.equal(report.truncated, true)
+  assert.equal(report.outputs.length, 1)
+  assert.equal(Buffer.byteLength(JSON.stringify({ outputs: report.outputs }), 'utf8') < 6 * 1024 * 1024, true)
 })
 
 test('summarizeOutputs and cells overview include mixed output kinds', () => {

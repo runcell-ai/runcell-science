@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { type ReactNode, useEffect, useRef } from 'react'
 import { ExternalLink, FileText, Globe2, Image as ImageIcon, Loader2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 
@@ -24,6 +24,7 @@ type AgentTimelineProps = {
     decision: AgentRequestDecision
   ) => void
   onOpenArtifact: (artifact: Extract<AgentTimelineItem, { type: 'artifact' }>['artifact']) => void
+  renderNotebookExecution?: (item: Extract<AgentTimelineItem, { type: 'notebook-execution' }>) => ReactNode
 }
 
 function AgentTimeline({
@@ -31,7 +32,8 @@ function AgentTimeline({
   running,
   resolvingRequestId,
   onResolveRequest,
-  onOpenArtifact
+  onOpenArtifact,
+  renderNotebookExecution
 }: AgentTimelineProps) {
   const endRef = useRef<HTMLDivElement | null>(null)
   const pinnedRef = useRef(true)
@@ -87,6 +89,16 @@ function AgentTimeline({
 
             if (item.type === 'artifact') {
               return <AgentArtifactRow key={item.id} item={item} onOpenArtifact={onOpenArtifact} />
+            }
+
+            if (item.type === 'notebook-execution') {
+              return (
+                <AgentNotebookExecutionRow
+                  key={item.id}
+                  item={item}
+                  renderNotebookExecution={renderNotebookExecution}
+                />
+              )
             }
 
             return <AgentToolCallRow key={item.id} item={item} />
@@ -255,6 +267,20 @@ function AgentToolCallRow({
       </div>
     </article>
   )
+}
+
+function AgentNotebookExecutionRow({
+  item,
+  renderNotebookExecution
+}: {
+  item: Extract<AgentTimelineItem, { type: 'notebook-execution' }>
+  renderNotebookExecution: AgentTimelineProps['renderNotebookExecution']
+}) {
+  if (renderNotebookExecution) {
+    return <>{renderNotebookExecution(item)}</>
+  }
+
+  return <AgentToolCallRow item={{ id: item.id, type: 'activity', createdAt: item.createdAt, event: item.event }} />
 }
 
 export { AgentTimeline }

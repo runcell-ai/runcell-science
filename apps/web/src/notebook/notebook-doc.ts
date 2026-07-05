@@ -18,7 +18,7 @@ export function joinText(value: unknown): string {
   return ''
 }
 
-function parseOutput(raw: unknown): NotebookOutput | null {
+export function parseOutput(raw: unknown): NotebookOutput | null {
   if (!isRecord(raw)) {
     return null
   }

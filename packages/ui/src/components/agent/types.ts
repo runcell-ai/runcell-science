@@ -3,6 +3,7 @@ import type {
   AgentTurnDiff,
   AgentEvent,
   AgentMessage,
+  NotebookExecutionDetail,
   AgentPendingRequest,
   AgentProvider
 } from '@open-science/contracts'
@@ -27,6 +28,11 @@ export type AgentTimelineItem = {
   | {
       type: 'activity'
       event: AgentEvent
+    }
+  | {
+      type: 'notebook-execution'
+      event: AgentEvent
+      detail: NotebookExecutionDetail
     }
   | {
       type: 'diff'

@@ -125,7 +125,22 @@ export interface AgentEvent {
   title: string | null
   summary: string | null
   status: string | null
+  detailJson?: string | null
   createdAt: string
+}
+
+/** Outputs are nbformat output objects (same shapes the notebook file stores), pre-truncated by nbcli. */
+export interface NotebookExecutionDetail {
+  /** cwd-relative posix path */
+  notebook: string
+  mode: 'exec-cell' | 'exec-code'
+  cellId: string | null
+  status: 'ok' | 'error' | 'timeout'
+  executionCount: number | null
+  durationMs: number
+  outputs: Record<string, unknown>[]
+  /** True when nbcli dropped/truncated outputs to fit the payload budget. */
+  truncated: boolean
 }
 
 export interface AgentPendingRequest {
@@ -331,6 +346,10 @@ export type RuntimeSseEvent =
       type: 'notebook.activity'
       /** Session-cwd-relative posix path of the notebook an agent is executing. */
       path: string
+    })
+  | (RuntimeSseEventBase & {
+      type: 'notebook.execution'
+      event: AgentEvent
     })
 
 export interface ApiErrorResponse {

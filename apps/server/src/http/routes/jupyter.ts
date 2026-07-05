@@ -8,7 +8,8 @@ import type {
   JupyterInstallIpykernelResponse,
   JupyterPythonEnvStatus,
   JupyterServerConnectionResponse,
-  JupyterServerStatusResponse
+  JupyterServerStatusResponse,
+  NotebookExecutionDetail
 } from '@open-science/contracts'
 
 import { sessionEventBus } from '../../runtime'
@@ -100,6 +101,84 @@ function resolveKnownWorkspaceCwd(cwd: unknown): string | ApiErrorResponse['erro
   }
 
   return knownWorkspaceRealpathForCwd(validated, agentSessionService.listVisibleSessions())
+}
+
+function validateWorkspaceNotebookPath(notebook: unknown): string | ApiErrorResponse['error'] {
+  if (
+    !isNonEmptyString(notebook) ||
+    notebook.includes('\0') ||
+    path.isAbsolute(notebook) ||
+    notebook.split('/').includes('..')
+  ) {
+    return {
+      code: 'bad_request',
+      message: 'notebook must be a workspace-relative path.'
+    }
+  }
+  return notebook
+}
+
+function validateNotebookExecutionDetail(body: Record<string, unknown>, notebook: string): NotebookExecutionDetail | ApiErrorResponse['error'] {
+  const mode = body.mode
+  if (mode !== 'exec-cell' && mode !== 'exec-code') {
+    return {
+      code: 'bad_request',
+      message: 'mode must be exec-cell or exec-code.'
+    }
+  }
+
+  const status = body.status
+  if (status !== 'ok' && status !== 'error' && status !== 'timeout') {
+    return {
+      code: 'bad_request',
+      message: 'status must be ok, error, or timeout.'
+    }
+  }
+
+  if (!Array.isArray(body.outputs) || body.outputs.length > 25) {
+    return {
+      code: 'bad_request',
+      message: 'outputs must be an array with at most 25 entries.'
+    }
+  }
+
+  if (body.cellId !== null && body.cellId !== undefined && typeof body.cellId !== 'string') {
+    return {
+      code: 'bad_request',
+      message: 'cellId must be a string or null.'
+    }
+  }
+  if (body.executionCount !== null && body.executionCount !== undefined && typeof body.executionCount !== 'number') {
+    return {
+      code: 'bad_request',
+      message: 'executionCount must be a number or null.'
+    }
+  }
+  if (typeof body.durationMs !== 'number' || !Number.isFinite(body.durationMs) || body.durationMs < 0) {
+    return {
+      code: 'bad_request',
+      message: 'durationMs must be a non-negative number.'
+    }
+  }
+  if (typeof body.truncated !== 'boolean') {
+    return {
+      code: 'bad_request',
+      message: 'truncated must be a boolean.'
+    }
+  }
+
+  return {
+    notebook,
+    mode,
+    cellId: typeof body.cellId === 'string' ? body.cellId : null,
+    status,
+    executionCount: typeof body.executionCount === 'number' ? body.executionCount : null,
+    durationMs: body.durationMs,
+    outputs: body.outputs.filter((output): output is Record<string, unknown> => (
+      typeof output === 'object' && output !== null && !Array.isArray(output)
+    )),
+    truncated: body.truncated
+  }
 }
 
 export const jupyterRoute: FastifyPluginAsync = async (server) => {
@@ -256,9 +335,9 @@ export const jupyterRoute: FastifyPluginAsync = async (server) => {
     if (typeof cwd !== 'string') {
       return reply.code(cwd.code === 'bad_request' ? 400 : 404).send({ error: cwd } satisfies ApiErrorResponse)
     }
-    const notebook = body?.notebook
-    if (!isNonEmptyString(notebook) || notebook.includes('\0') || path.isAbsolute(notebook) || notebook.split('/').includes('..')) {
-      return sendBadRequest(reply, 'notebook must be a workspace-relative path.')
+    const notebook = validateWorkspaceNotebookPath(body?.notebook)
+    if (typeof notebook !== 'string') {
+      return reply.code(400).send({ error: notebook } satisfies ApiErrorResponse)
     }
 
     const createdAt = new Date().toISOString()
@@ -276,6 +355,57 @@ export const jupyterRoute: FastifyPluginAsync = async (server) => {
         sessionId: session.id,
         createdAt,
         path: notebook
+      })
+    }
+
+    return reply.code(204).send()
+  })
+
+  server.post('/api/jupyter/workspace/execution', { bodyLimit: 8 * 1024 * 1024 }, async (request, reply) => {
+    const body = request.body as Record<string, unknown> | null
+    const cwd = resolveKnownWorkspaceCwd(body?.cwd)
+    if (cwd === null) {
+      return sendWorkspaceNotFound(reply)
+    }
+    if (typeof cwd !== 'string') {
+      return reply.code(cwd.code === 'bad_request' ? 400 : 404).send({ error: cwd } satisfies ApiErrorResponse)
+    }
+
+    const notebook = validateWorkspaceNotebookPath(body?.notebook)
+    if (typeof notebook !== 'string') {
+      return reply.code(400).send({ error: notebook } satisfies ApiErrorResponse)
+    }
+
+    if (!body) {
+      return sendBadRequest(reply, 'request body is required.')
+    }
+
+    const detail = validateNotebookExecutionDetail(body, notebook)
+    if ('code' in detail) {
+      return reply.code(400).send({ error: detail } satisfies ApiErrorResponse)
+    }
+
+    for (const session of agentSessionService.listVisibleSessions()) {
+      try {
+        if (fs.realpathSync(session.cwd) !== cwd) {
+          continue
+        }
+      } catch {
+        continue
+      }
+
+      const sessionDetail = agentSessionService.getSessionDetail(session.id)
+      const runningTurn = sessionDetail?.turns.find((turn) => turn.status === 'running') ?? null
+      agentSessionService.recordNotebookExecution({
+        sessionId: session.id,
+        turnId: runningTurn?.id ?? null,
+        provider: session.provider,
+        eventType: 'notebook.execution',
+        streamKind: 'notebook',
+        title: 'Notebook execution',
+        summary: `${detail.notebook} · ${detail.cellId ?? 'exec-code'} · ${detail.status}`,
+        status: detail.status,
+        canonicalJson: detail
       })
     }
 

@@ -5,6 +5,7 @@ import type {
   AgentArtifactKind,
   AgentDiffFileChange,
   AgentDiffSource,
+  AgentEvent,
   AgentMessage,
   AgentPendingRequest,
   AgentProvider,
@@ -319,6 +320,26 @@ export class AgentSessionService {
       ...(input.summary !== undefined ? { summary: input.summary } : {}),
       ...(input.status !== undefined ? { status: input.status } : {})
     })
+  }
+
+  recordNotebookExecution(input: RecordRuntimeActivityInput): AgentEvent {
+    const createdAt = nowIso()
+    const eventId = this.repository.insertAgentEvent(input, createdAt)
+    const event = this.repository.findSessionDetail(input.sessionId)?.events.find((entry) => entry.id === eventId)
+    if (!event) {
+      throw new AgentSessionServiceError('not_found', 'Notebook execution event projection was not found.', 404)
+    }
+
+    sessionEventBus.publish({
+      id: event.id,
+      type: 'notebook.execution',
+      sessionId: event.sessionId,
+      turnId: event.turnId,
+      createdAt: event.createdAt,
+      event
+    })
+
+    return event
   }
 
   recordTurnDiff(input: RecordTurnDiffInput): AgentTurnDiff {

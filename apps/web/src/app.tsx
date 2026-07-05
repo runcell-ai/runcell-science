@@ -28,6 +28,7 @@ import { useSkills } from './hooks/use-skills'
 import { useWorkspace } from './hooks/use-workspace'
 import { apiBaseUrl } from './lib/api'
 import { persistCwd, readStoredCwd } from './lib/storage'
+import { NotebookExecutionCard } from './notebook/execution-card'
 import './app.css'
 
 const providerOptions: AgentProviderOption[] = [
@@ -154,6 +155,7 @@ function App() {
               resolvingRequestId={workspace.resolvingRequestId}
               onResolveRequest={(request, decision) => void workspace.resolveRequest(request, decision)}
               onOpenArtifact={workspace.openArtifact}
+              renderNotebookExecution={(item) => <NotebookExecutionCard item={item} />}
             />
 
             {workspace.activeSessionId && workspace.detail && !workspace.isDraft ? (

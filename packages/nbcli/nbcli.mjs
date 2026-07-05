@@ -8,6 +8,11 @@ import { pathToFileURL } from 'node:url'
 import process from 'node:process'
 
 const defaultTimeoutSeconds = 300
+const reportTextBudgetChars = 4_000
+const reportImageBudgetChars = 2_000_000
+const reportMaxImageOutputs = 3
+const reportMaxOutputs = 20
+const reportPayloadTargetBytes = 5_700_000
 
 function usage(command = '') {
   const common = '[--api-url <url>] [--cwd <path>]'
@@ -161,6 +166,106 @@ export function truncateMiddle(value, maxChars = 8000) {
   const tailChars = Math.max(0, maxChars - headChars)
   const shown = headChars + tailChars
   return `${text.slice(0, headChars)}\n… [truncated: showing ${shown} of ${text.length} chars] …\n${tailChars > 0 ? text.slice(-tailChars) : ''}`
+}
+
+function syntheticStream(text) {
+  return { output_type: 'stream', name: 'stdout', text: `${text}\n` }
+}
+
+function cloneOutput(output) {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(output)
+  }
+  return JSON.parse(JSON.stringify(output))
+}
+
+function truncateTextField(value) {
+  const text = joinText(value)
+  const next = truncateMiddle(text, reportTextBudgetChars)
+  return { value: next, truncated: next !== text }
+}
+
+function imageByteLength(base64) {
+  try {
+    return Buffer.byteLength(base64, 'base64')
+  } catch {
+    return base64.length
+  }
+}
+
+function budgetOneOutputForReport(rawOutput, imageState) {
+  const output = cloneOutput(rawOutput)
+  let truncated = false
+
+  if (output?.output_type === 'stream') {
+    const next = truncateTextField(output.text)
+    output.text = next.value
+    return { output, truncated: truncated || next.truncated }
+  }
+
+  if (output?.output_type === 'error') {
+    const traceback = Array.isArray(output.traceback)
+      ? output.traceback.map((line) => String(line)).join('\n')
+      : joinText(output.traceback)
+    const next = truncateTextField(traceback)
+    output.traceback = next.value ? next.value.split('\n') : []
+    return { output, truncated: truncated || next.truncated }
+  }
+
+  if ((output?.output_type === 'display_data' || output?.output_type === 'execute_result') && isObject(output.data)) {
+    if (output.data['text/plain'] !== undefined) {
+      const next = truncateTextField(output.data['text/plain'])
+      output.data['text/plain'] = next.value
+      truncated = truncated || next.truncated
+    }
+
+    for (const [mime, value] of Object.entries(output.data)) {
+      if (!mime.startsWith('image/') || typeof value !== 'string' || value.length === 0) {
+        continue
+      }
+      imageState.count += 1
+      if (imageState.count > reportMaxImageOutputs) {
+        return {
+          output: syntheticStream('[image dropped: inline image limit exceeded]'),
+          truncated: true
+        }
+      }
+      if (value.length > reportImageBudgetChars) {
+        return {
+          output: syntheticStream(`[image dropped: ${imageByteLength(value)} bytes exceeds inline budget]`),
+          truncated: true
+        }
+      }
+    }
+  }
+
+  return { output, truncated }
+}
+
+export function budgetOutputsForReport(outputs) {
+  const imageState = { count: 0 }
+  let truncated = false
+  let budgeted = outputs.map((output) => {
+    const next = budgetOneOutputForReport(output, imageState)
+    truncated = truncated || next.truncated
+    return next.output
+  })
+
+  if (budgeted.length > reportMaxOutputs) {
+    const omitted = budgeted.length - (reportMaxOutputs - 1)
+    budgeted = [
+      ...budgeted.slice(0, reportMaxOutputs - 1),
+      syntheticStream(`[${omitted} more output${omitted === 1 ? '' : 's'} omitted]`)
+    ]
+    truncated = true
+  }
+
+  while (budgeted.length > 0 && Buffer.byteLength(JSON.stringify(budgeted), 'utf8') >= reportPayloadTargetBytes) {
+    budgeted = budgeted.slice(0, -1)
+    truncated = true
+  }
+
+  return { outputs: budgeted, truncated }
 }
 
 function truncateLine(value, maxChars) {
@@ -466,6 +571,25 @@ async function reportNotebookActivity(apiUrl, cwd, notebookPath) {
   }
 }
 
+async function reportNotebookExecution(apiUrl, payload) {
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 2_000)
+    try {
+      await fetch(new URL('api/jupyter/workspace/execution', apiUrl), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      })
+    } finally {
+      clearTimeout(timeout)
+    }
+  } catch {
+    // Ignore: inline timeline reporting must never fail the notebook command.
+  }
+}
+
 async function findOrCreateSession(connection, notebookPath) {
   const headers = { Authorization: `token ${connection.token}` }
   const sessions = await fetchJson(new URL('api/sessions', connection.baseUrl), { headers })
@@ -668,7 +792,21 @@ async function runExec(options, mode) {
   const session = await findOrCreateSession(connection, notebookPath)
   const kernelId = session?.kernel?.id
   if (!kernelId) throw new Error('Jupyter session response did not include a kernel id.')
+  const startedAt = Date.now()
   const result = await executeCode(connection, kernelId, code, options.timeoutSeconds * 1000)
+  const durationMs = Date.now() - startedAt
+  const reportOutputs = budgetOutputsForReport(result.outputs)
+  await reportNotebookExecution(apiUrl, {
+    cwd,
+    notebook: notebookPath,
+    mode,
+    cellId: mode === 'exec-cell' ? options.cell : null,
+    status: result.timedOut ? 'timeout' : result.status === 'error' ? 'error' : 'ok',
+    executionCount: result.executionCount,
+    durationMs,
+    outputs: reportOutputs.outputs,
+    truncated: reportOutputs.truncated
+  })
 
   printOutputs(result.outputs)
   if (result.timedOut) throw new CliError(`Execution timed out after ${options.timeoutSeconds} seconds.`, 3)

@@ -98,10 +98,29 @@ async function startJupyter(workspace: string, runtimeRoot: string) {
 }
 
 async function startStubApi(connection: { baseUrl: string; wsUrl: string; token: string }) {
+  const executionReports: any[] = []
   const server = http.createServer((request, response) => {
     if (request.method === 'POST' && request.url === '/api/jupyter/workspace') {
       response.writeHead(200, { 'Content-Type': 'application/json' })
       response.end(JSON.stringify(connection))
+      return
+    }
+    if (request.method === 'POST' && request.url === '/api/jupyter/workspace/activity') {
+      response.writeHead(204)
+      response.end()
+      return
+    }
+    if (request.method === 'POST' && request.url === '/api/jupyter/workspace/execution') {
+      let body = ''
+      request.setEncoding('utf8')
+      request.on('data', (chunk) => {
+        body += chunk
+      })
+      request.on('end', () => {
+        executionReports.push({ body: JSON.parse(body), bytes: Buffer.byteLength(body, 'utf8') })
+        response.writeHead(204)
+        response.end()
+      })
       return
     }
     response.writeHead(404, { 'Content-Type': 'application/json' })
@@ -112,6 +131,7 @@ async function startStubApi(connection: { baseUrl: string; wsUrl: string; token:
   assert.ok(address && typeof address === 'object')
   return {
     apiUrl: `http://127.0.0.1:${address.port}`,
+    executionReports,
     close: () => new Promise<void>((resolve) => server.close(() => resolve()))
   }
 }
@@ -228,6 +248,7 @@ test('nbcli shares a real Jupyter kernel and persists exec-cell outputs', { time
     const sessions = await jupyterFetch(jupyter, 'api/sessions')
     assert.equal(sessions.filter((session: any) => session.path === 't.ipynb' && session.type === 'notebook').length, 1)
 
+    stub.executionReports.length = 0
     const plot = await runNbcli(workspace, stub.apiUrl, [
       'exec-cell',
       '--notebook',
@@ -238,6 +259,11 @@ test('nbcli shares a real Jupyter kernel and persists exec-cell outputs', { time
     assert.equal(plot.code, 0, plot.stderr)
     assert.match(plot.stdout, /plot text/)
     assert.match(plot.stdout, /\[image\/png output: \d+ bytes base64\]/)
+    assert.equal(stub.executionReports.length, 1)
+    assert.equal(stub.executionReports[0].body.mode, 'exec-cell')
+    assert.equal(stub.executionReports[0].body.status, 'ok')
+    assert.equal(stub.executionReports[0].body.outputs.some((output: any) => output.data?.['image/png']), true)
+    assert.equal(stub.executionReports[0].bytes < 6 * 1024 * 1024, true)
 
     let saved = JSON.parse(await readFile(path.join(workspace, 't.ipynb'), 'utf8'))
     const plotCell = saved.cells.find((cell: any) => cell.id === 'plot-cell')
@@ -275,6 +301,7 @@ test('nbcli shares a real Jupyter kernel and persists exec-cell outputs', { time
     const plotBytes = await readFile(plotImagePath)
     assert.equal(plotBytes.subarray(0, 4).toString('binary'), '\x89PNG')
 
+    stub.executionReports.length = 0
     const error = await runNbcli(workspace, stub.apiUrl, [
       'exec-cell',
       '--notebook',
@@ -285,6 +312,8 @@ test('nbcli shares a real Jupyter kernel and persists exec-cell outputs', { time
     assert.equal(error.code, 1)
     assert.match(error.stderr, /ValueError/)
     assert.match(error.stderr, /nbcli boom/)
+    assert.equal(stub.executionReports.length, 1)
+    assert.equal(stub.executionReports[0].body.status, 'error')
 
     saved = JSON.parse(await readFile(path.join(workspace, 't.ipynb'), 'utf8'))
     const errorCell = saved.cells.find((cell: any) => cell.id === 'error-cell')

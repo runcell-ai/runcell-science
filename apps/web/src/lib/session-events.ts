@@ -6,6 +6,7 @@ import type {
   AgentSessionSummary,
   AgentTurn,
   AgentTurnDiff,
+  NotebookExecutionDetail,
   RuntimeSseEvent
 } from '@open-science/contracts'
 import type { AgentTimelineItem } from '@open-science/ui'
@@ -29,7 +30,8 @@ export const runtimeEventTypes: RuntimeSseEvent['type'][] = [
   'artifact.created',
   'artifact.updated',
   'runtime.error',
-  'notebook.activity'
+  'notebook.activity',
+  'notebook.execution'
 ]
 
 const hiddenActivityEventTypes = new Set([
@@ -182,6 +184,11 @@ export function applyRuntimeEvent(detail: AgentSessionDetail | null, event: Runt
         events: byCreatedAt(upsertById(detail.events, activityEvent))
       }
     }
+    case 'notebook.execution':
+      return {
+        ...detail,
+        events: byCreatedAt(upsertById(detail.events, event.event))
+      }
     case 'diff.updated':
       return {
         ...detail,
@@ -279,7 +286,39 @@ function timelineItemRank(item: AgentTimelineItem): number {
   if (item.type === 'diff') {
     return 3
   }
+  if (item.type === 'notebook-execution') {
+    return 3
+  }
   return 3
+}
+
+function parseNotebookExecutionDetail(event: AgentEvent): NotebookExecutionDetail | null {
+  if (event.eventType !== 'notebook.execution' || !event.detailJson) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(event.detailJson) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null
+    }
+    const detail = parsed as NotebookExecutionDetail
+    if (
+      typeof detail.notebook !== 'string' ||
+      (detail.mode !== 'exec-cell' && detail.mode !== 'exec-code') ||
+      (detail.cellId !== null && typeof detail.cellId !== 'string') ||
+      (detail.status !== 'ok' && detail.status !== 'error' && detail.status !== 'timeout') ||
+      (detail.executionCount !== null && typeof detail.executionCount !== 'number') ||
+      typeof detail.durationMs !== 'number' ||
+      !Array.isArray(detail.outputs) ||
+      typeof detail.truncated !== 'boolean'
+    ) {
+      return null
+    }
+    return detail
+  } catch {
+    return null
+  }
 }
 
 export function buildTimelineItems(
@@ -299,7 +338,10 @@ export function buildTimelineItems(
     })),
     ...mergeLifecycleEvents(
       detail.events.filter(
-        (event) => isVisibleActivityEvent(event.eventType) && hasActivityContent(event)
+        (event) =>
+          event.eventType !== 'notebook.execution' &&
+          isVisibleActivityEvent(event.eventType) &&
+          hasActivityContent(event)
       )
     ).map((event) => ({
       id: event.id,
@@ -307,6 +349,18 @@ export function buildTimelineItems(
       createdAt: event.createdAt,
       event
     })),
+    ...detail.events.flatMap((event) => {
+      const executionDetail = parseNotebookExecutionDetail(event)
+      return executionDetail
+        ? [{
+            id: event.id,
+            type: 'notebook-execution' as const,
+            createdAt: event.createdAt,
+            event,
+            detail: executionDetail
+          }]
+        : []
+    }),
     ...(detail.diffs ?? []).map((diff) => ({
       id: diff.id,
       type: 'diff' as const,

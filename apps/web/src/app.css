@@ -1110,6 +1110,7 @@
 
 .nb-output-media img {
   max-width: 100%;
+  max-height: 320px;
   height: auto;
   border-radius: var(--radius-sm);
   background: var(--surface);
@@ -1151,4 +1152,75 @@
   margin: 16px 16px 0;
   border-color: color-mix(in oklch, var(--destructive), var(--border) 40%);
   color: var(--destructive);
+}
+
+.nb-exec-row {
+  align-items: stretch;
+}
+
+.nb-exec-card {
+  width: min(100%, 760px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.nb-exec-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.nb-exec-status {
+  flex: 0 0 auto;
+  color: var(--foreground);
+  font-weight: 700;
+}
+
+.nb-exec-error .nb-exec-status,
+.nb-exec-timeout .nb-exec-status {
+  color: var(--destructive);
+}
+
+.nb-exec-path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nb-exec-cell,
+.nb-exec-count,
+.nb-exec-truncated {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+}
+
+.nb-exec-outputs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+}
+
+.nb-exec-output-details {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.nb-exec-output-details summary {
+  cursor: pointer;
+  padding: 6px 10px;
+  color: var(--muted-foreground);
+  font-size: 12px;
 }

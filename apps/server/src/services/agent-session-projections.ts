@@ -160,6 +160,7 @@ export function mapEvent(row: AgentEventRow): AgentEvent | null {
     title: row.title ?? fallbackTitleForEvent(row),
     summary: row.summary ?? fallbackSummaryForEvent(row),
     status: row.status ?? fallbackStatusForEvent(row),
+    ...(row.event_type === 'notebook.execution' ? { detailJson: row.canonical_json } : {}),
     createdAt: row.created_at
   }
 }
