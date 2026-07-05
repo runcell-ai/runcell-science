@@ -28,6 +28,7 @@ import type {
   WorkspaceFileKind
 } from '@open-science/contracts'
 import { Button, Input, ScrollArea } from '@open-science/ui'
+import { CodePreview } from './code-preview'
 
 const NotebookViewer = lazy(() => import('./notebook/notebook-viewer'))
 
@@ -489,7 +490,7 @@ function PreviewSurface({
     }
     return (
       <div className="preview-text-frame">
-        <pre className="preview-text">{textState.content}</pre>
+        <CodePreview fileName={model.subtitle || model.title} contents={textState.content} />
       </div>
     )
   }

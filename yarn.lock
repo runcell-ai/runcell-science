@@ -774,6 +774,7 @@ __metadata:
     "@jupyterlab/services": "npm:7.6.1"
     "@open-science/contracts": "workspace:*"
     "@open-science/ui": "workspace:*"
+    "@pierre/diffs": "npm:1.2.12"
     "@tailwindcss/postcss": "npm:^4.0.0"
     "@tailwindcss/vite": "npm:^4.0.0"
     "@types/node": "npm:^24.13.2"

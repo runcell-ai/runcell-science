@@ -490,6 +490,26 @@
   overflow-wrap: normal;
 }
 
+.code-preview {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: var(--surface);
+}
+
+.code-preview-container {
+  display: block;
+  min-width: max-content;
+  --diffs-font-family: var(--font-mono);
+  --diffs-header-font-family: var(--font-sans);
+  --diffs-font-size: 12px;
+  --diffs-line-height: 20px;
+  --diffs-light-bg: var(--surface);
+  --diffs-dark-bg: var(--surface);
+  --diffs-light: var(--foreground);
+  --diffs-dark: var(--foreground);
+}
+
 .artifact-markdown {
   max-width: 860px;
   margin: 0 auto;
