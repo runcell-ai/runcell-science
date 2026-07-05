@@ -1,15 +1,15 @@
 import type { AgentModelOption } from '@open-science/ui'
 
 /**
- * Fallback choices used while /api/models is loading or unavailable. Codex
- * models normally come from the local Codex app-server model/list RPC.
+ * Fallback choices used while /api/models is loading or unavailable. The real
+ * catalogs come from the server: Codex via the app-server `model/list` RPC and
+ * Claude via the agent SDK's `supportedModels()`. We only seed the always-valid
+ * "Default" (null) row per provider here — concrete models arrive dynamically,
+ * so hardcoding aliases would risk duplicate/stale rows once the list loads.
  */
 export const fallbackModelOptions: AgentModelOption[] = [
   { provider: 'codex', model: null, label: 'Default', hint: 'Configured default' },
-  { provider: 'claude', model: null, label: 'Default', hint: 'Configured default' },
-  { provider: 'claude', model: 'opus', label: 'Opus' },
-  { provider: 'claude', model: 'sonnet', label: 'Sonnet' },
-  { provider: 'claude', model: 'haiku', label: 'Haiku' }
+  { provider: 'claude', model: null, label: 'Default', hint: 'Configured default' }
 ]
 
 export function mergeModelOptions(primary: AgentModelOption[], fallback: AgentModelOption[]): AgentModelOption[] {

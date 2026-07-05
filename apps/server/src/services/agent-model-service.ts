@@ -1,5 +1,6 @@
 import type { AgentModelOption, ListAgentModelsResponse } from '@open-science/contracts'
 
+import { fetchClaudeSupportedModels } from '../runtime/providers/claude/claude-models'
 import type { ModelListResponse } from '../runtime/providers/codex/generated/v2/ModelListResponse'
 import { mcpManagementService } from './mcp-management-service'
 
@@ -10,12 +11,12 @@ const codexDefaultOption: AgentModelOption = {
   hint: 'Configured default'
 }
 
-const claudeDefaultOptions: AgentModelOption[] = [
-  { provider: 'claude', model: null, label: 'Default', hint: 'Configured default' },
-  { provider: 'claude', model: 'opus', label: 'Opus' },
-  { provider: 'claude', model: 'sonnet', label: 'Sonnet' },
-  { provider: 'claude', model: 'haiku', label: 'Haiku' }
-]
+const claudeDefaultOption: AgentModelOption = {
+  provider: 'claude',
+  model: null,
+  label: 'Default',
+  hint: 'Configured default'
+}
 
 const MODEL_LIST_TIMEOUT_MS = 15_000
 
@@ -40,12 +41,12 @@ function dedupeOptions(options: AgentModelOption[]): AgentModelOption[] {
 export class AgentModelService {
   async listModelOptions(): Promise<ListAgentModelsResponse> {
     const warnings: string[] = []
-    const models = [
-      ...(await this.listCodexModels(warnings)),
-      ...claudeDefaultOptions
-    ]
+    const [codexModels, claudeModels] = await Promise.all([
+      this.listCodexModels(warnings),
+      this.listClaudeModels(warnings)
+    ])
 
-    return { models: dedupeOptions(models), warnings }
+    return { models: dedupeOptions([...codexModels, ...claudeModels]), warnings }
   }
 
   private async listCodexModels(warnings: string[]): Promise<AgentModelOption[]> {
@@ -75,6 +76,30 @@ export class AgentModelService {
       } while (cursor)
     } catch (error) {
       warnings.push(`Codex model list unavailable: ${errorMessage(error)}`)
+    }
+
+    return options
+  }
+
+  private async listClaudeModels(warnings: string[]): Promise<AgentModelOption[]> {
+    const options: AgentModelOption[] = [claudeDefaultOption]
+
+    try {
+      const models = await fetchClaudeSupportedModels(MODEL_LIST_TIMEOUT_MS)
+      for (const model of models) {
+        // The SDK's synthetic "default" row is already covered by our null
+        // Default option, and its value ("default") is not a concrete model id.
+        if (model.value === 'default') {
+          continue
+        }
+        options.push({
+          provider: 'claude',
+          model: model.value,
+          label: model.displayName || model.value
+        })
+      }
+    } catch (error) {
+      warnings.push(`Claude model list unavailable: ${errorMessage(error)}`)
     }
 
     return options
