@@ -223,17 +223,25 @@ function budgetOneOutputForReport(rawOutput, imageState) {
     }
 
     // Non-image renderable mimes must be budgeted too: a pandas/Styler table
-    // can carry megabytes of text/html that would otherwise ride the report
-    // into the DB, SSE, and the timeline renderer untouched.
+    // can carry megabytes of text/html — and application/json or plotly
+    // bundles store OBJECTS, which joinText would miscount, so non-string
+    // values are measured via JSON.stringify.
     for (const [mime, value] of Object.entries(output.data)) {
       if (mime === 'text/plain' || mime.startsWith('image/')) continue
-      const text = joinText(value)
+      const stringish = typeof value === 'string' || Array.isArray(value)
+      const text = stringish ? joinText(value) : JSON.stringify(value) ?? ''
       if (mime === 'text/html' && text.length > reportHtmlBudgetChars) {
         delete output.data[mime]
         truncated = true
         continue
       }
       if (text.length > reportTextBudgetChars) {
+        if (!stringish && output.data['text/plain'] !== undefined) {
+          // Rich JSON with a plain fallback: drop it rather than mangle it.
+          delete output.data[mime]
+          truncated = true
+          continue
+        }
         const next = truncateTextField(text)
         output.data[mime] = next.value
         truncated = true

@@ -166,7 +166,7 @@ test('budgetOutputsForReport trims to twenty outputs with an omission marker', (
   assert.match(String(report.outputs.at(-1)?.text), /\[6 more outputs omitted\]/)
 })
 
-test('budgetOutputsForReport drops oversized trailing outputs below the payload budget', () => {
+test('budgetOutputsForReport truncates oversized json instead of dropping the output', () => {
   const report = budgetOutputsForReport([
     { output_type: 'stream', name: 'stdout', text: 'small\n' },
     {
@@ -177,8 +177,24 @@ test('budgetOutputsForReport drops oversized trailing outputs below the payload 
   ])
 
   assert.equal(report.truncated, true)
-  assert.equal(report.outputs.length, 1)
-  assert.equal(Buffer.byteLength(JSON.stringify({ outputs: report.outputs }), 'utf8') < 6 * 1024 * 1024, true)
+  assert.equal(report.outputs.length, 2)
+  assert.equal(Buffer.byteLength(JSON.stringify({ outputs: report.outputs }), 'utf8') < 100_000, true)
+})
+
+test('budgetOutputsForReport drops trailing outputs when images alone exceed the payload target', () => {
+  // Images bypass the text budget; three near-cap images (~2M chars each)
+  // exceed the 5.7MB payload target, forcing the total-size fallback.
+  const image = 'A'.repeat(1_999_000)
+  const report = budgetOutputsForReport([
+    { output_type: 'stream', name: 'stdout', text: 'small\n' },
+    { output_type: 'display_data', data: { 'image/png': image }, metadata: {} },
+    { output_type: 'display_data', data: { 'image/png': image }, metadata: {} },
+    { output_type: 'display_data', data: { 'image/png': image }, metadata: {} }
+  ])
+
+  assert.equal(report.truncated, true)
+  assert.ok(report.outputs.length < 4)
+  assert.equal(Buffer.byteLength(JSON.stringify({ outputs: report.outputs }), 'utf8') < 5_700_000, true)
 })
 
 test('summarizeOutputs and cells overview include mixed output kinds', () => {
@@ -324,4 +340,31 @@ test('budgetOutputsForReport budgets html and other non-image mimes', () => {
   const second = outputs[1] as { data: Record<string, unknown> }
   assert.equal(second.data['text/html'], smallHtml)
   assert.match(String(second.data['text/latex']), /truncated: showing/)
+})
+
+test('budgetOutputsForReport budgets object-valued JSON mimes', () => {
+  const bigObject = { rows: Array.from({ length: 2000 }, (_, index) => ({ index, label: `row-${index}` })) }
+  const { outputs, truncated } = budgetOutputsForReport([
+    {
+      output_type: 'execute_result',
+      execution_count: 1,
+      metadata: {},
+      data: { 'text/plain': 'plain fallback', 'application/json': bigObject }
+    },
+    {
+      output_type: 'display_data',
+      metadata: {},
+      data: { 'application/vnd.plotly.v1+json': bigObject }
+    }
+  ])
+
+  assert.equal(truncated, true)
+  const withFallback = outputs[0] as { data: Record<string, unknown> }
+  assert.equal(withFallback.data['application/json'], undefined)
+  assert.equal(withFallback.data['text/plain'], 'plain fallback')
+  const withoutFallback = outputs[1] as { data: Record<string, unknown> }
+  const replaced = withoutFallback.data['application/vnd.plotly.v1+json']
+  assert.equal(typeof replaced, 'string')
+  assert.ok((replaced as string).length < 10_000)
+  assert.match(replaced as string, /truncated: showing/)
 })
