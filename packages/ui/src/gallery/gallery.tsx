@@ -149,6 +149,7 @@ const galleryTimelineItems: AgentTimelineItem[] = [
       role: 'user',
       text: 'Extract the agent session UI and prompt composer into the UI package.',
       status: 'completed',
+      phase: null,
       providerItemId: null,
       createdAt: '2026-07-01T12:00:00.000Z',
       updatedAt: '2026-07-01T12:00:00.000Z'
@@ -206,6 +207,7 @@ const galleryTimelineItems: AgentTimelineItem[] = [
         'Next I suggest extracting the artifact preview panel as well.'
       ].join('\n'),
       status: 'completed',
+      phase: null,
       providerItemId: null,
       createdAt: '2026-07-01T12:03:00.000Z',
       updatedAt: '2026-07-01T12:03:00.000Z'

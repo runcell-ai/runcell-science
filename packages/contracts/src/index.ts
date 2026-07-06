@@ -45,6 +45,8 @@ export type AgentMessageRole = 'user' | 'assistant' | 'system'
 
 export type AgentMessageStatus = 'pending' | 'streaming' | 'completed' | 'failed'
 
+export type AgentMessagePhase = 'commentary' | 'final_answer'
+
 export type AgentPendingRequestStatus = 'open' | 'resolved'
 
 export type AgentArtifactKind = 'image' | 'pdf' | 'markdown' | 'html' | 'custom' | 'url'
@@ -114,6 +116,10 @@ export interface AgentTurn {
   requestedAt: string
   completedAt: string | null
   error: string | null
+  /** Final assistant answer for the turn, per provider semantics; null when none. */
+  finalResponse: string | null
+  /** agent_messages.id of the message finalResponse came from. */
+  finalMessageId: string | null
 }
 
 export interface AgentMessage {
@@ -123,6 +129,8 @@ export interface AgentMessage {
   role: AgentMessageRole
   text: string
   status: AgentMessageStatus
+  /** Provider-reported phase; null = provider did not supply one (legacy models, Claude). */
+  phase: AgentMessagePhase | null
   providerItemId: string | null
   createdAt: string
   updatedAt: string

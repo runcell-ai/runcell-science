@@ -121,8 +121,9 @@ function AgentMessageRow({
 }: {
   item: Extract<AgentTimelineItem, { type: 'message' }>
 }) {
+  const phaseClass = item.message.phase ? ` message-phase-${item.message.phase}` : ''
   return (
-    <article className={`timeline-row message-row message-${item.message.role}`}>
+    <article className={`timeline-row message-row message-${item.message.role}${phaseClass}`}>
       <div className="message-body">
         <div className="message-meta">
           <span className="message-role">

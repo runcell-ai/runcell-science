@@ -633,6 +633,16 @@
   padding: 4px 2px;
 }
 
+/* Codex interim commentary: de-emphasized progress text between tool calls.
+ * final_answer and phase-less messages keep the default assistant styling. */
+.message-phase-commentary .message-body {
+  opacity: 0.75;
+}
+
+.message-phase-commentary .message-markdown {
+  font-size: 13px;
+}
+
 .message-meta {
   display: flex;
   align-items: baseline;

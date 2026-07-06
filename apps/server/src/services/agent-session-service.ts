@@ -22,6 +22,8 @@ import { sessionEventBus } from '../runtime/session-event-bus'
 import {
   AgentSessionRepository,
   type AppendAssistantMessageDeltaInput,
+  type CompleteAssistantMessageItemInput,
+  type CompleteTurnOptions,
   type CreateAgentArtifactInput,
   type CreatePendingAgentSessionInput,
   type CreatePendingRequestInput,
@@ -380,6 +382,17 @@ export class AgentSessionService {
     return projection.message
   }
 
+  /**
+   * Records the authoritative completed assistant transcript item (full text
+   * plus provider phase) and publishes completion for that specific message.
+   */
+  completeAssistantMessageItem(input: CompleteAssistantMessageItemInput): AgentMessage {
+    const projection = this.repository.completeAssistantMessageItem(input)
+    this.publishSessionUpdated(projection.detail.session)
+    this.publishMessageEvent('message.completed', projection.message)
+    return projection.message
+  }
+
   updateDisabledMcpServers(sessionId: string, disabledServers: string[]): AgentSessionDetail {
     const detail = this.repository.updateDisabledMcpServers(sessionId, disabledServers)
     if (!detail) {
@@ -539,23 +552,24 @@ export class AgentSessionService {
     return diff
   }
 
-  completeTurn(sessionId: string, turnId: string): AgentSessionDetail {
-    const detail = this.repository.completeTurn(sessionId, turnId)
-    if (!detail) {
+  completeTurn(sessionId: string, turnId: string, options?: CompleteTurnOptions): AgentSessionDetail {
+    const projection = this.repository.completeTurn(sessionId, turnId, options)
+    if (!projection) {
       throw new AgentSessionServiceError('not_found', 'Session was not found.', 404)
     }
 
+    const { detail, completedAssistantMessageIds } = projection
     const turn = detail.turns.find((entry) => entry.id === turnId)
-    const assistantMessage = detail.messages.find(
-      (message) => message.turnId === turnId && message.role === 'assistant'
-    )
 
     this.publishSessionUpdated(detail.session)
     if (turn) {
       this.publishTurnEvent('turn.completed', turn)
     }
-    if (assistantMessage) {
-      this.publishMessageEvent('message.completed', assistantMessage)
+    for (const messageId of completedAssistantMessageIds) {
+      const message = detail.messages.find((entry) => entry.id === messageId)
+      if (message) {
+        this.publishMessageEvent('message.completed', message)
+      }
     }
     if (turn) {
       this.finalizeTurnCheckpoint(detail.session, turn)
