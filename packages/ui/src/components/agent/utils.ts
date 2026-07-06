@@ -117,7 +117,8 @@ export function visibleActivitySummary(
 export function eventTitle(event: AgentEvent): string {
   const title = event.title?.trim()
   if (title) {
-    return title
+    // Provider titles can be raw event names like "warning".
+    return title.charAt(0).toUpperCase() + title.slice(1)
   }
 
   return event.eventType

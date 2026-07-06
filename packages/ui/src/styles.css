@@ -204,7 +204,6 @@
 /* Small-caps overline used for section and metadata labels. */
 .panel-title,
 .field-label,
-.message-role,
 .request-eyebrow,
 .conversation-provider,
 .session-provider {
@@ -614,19 +613,37 @@
   min-width: 0;
 }
 
+/* Roles read from shape, not labels: user prompts are bubbles on the
+ * right, assistant replies are unadorned prose on the page. */
 .message-row {
-  margin: 9px 0;
+  position: relative;
+  margin: 10px 0;
 }
 
 .message-body {
   min-width: 0;
 }
 
+/* A user prompt opens a new turn, so it gets extra air above. */
+.message-user {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 28px;
+}
+
+.timeline-row:first-child {
+  margin-top: 2px;
+}
+
 .message-user .message-body {
-  border-left: 2px solid var(--primary);
-  border-radius: 0 var(--radius-md) var(--radius-md) 0;
-  background: color-mix(in oklch, var(--primary), var(--background) 94%);
-  padding: 10px 14px;
+  max-width: min(85%, 640px);
+  border: 1px solid color-mix(in oklch, var(--primary), var(--border) 78%);
+  border-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--primary), var(--background) 93%);
+  padding: 9px 13px;
 }
 
 .message-assistant .message-body {
@@ -643,23 +660,42 @@
   font-size: 13px;
 }
 
-.message-meta {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 5px;
-}
-
-.message-user .message-role {
-  color: var(--primary);
-}
-
+/* Timestamps stay out of the way until the row is hovered. */
 .message-time,
 .activity-time {
   color: var(--muted-foreground);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.message-row:hover .message-time,
+.message-row:focus-within .message-time,
+.activity-row:hover .activity-time,
+.activity-row:focus-within .activity-time {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .message-time,
+  .activity-time {
+    opacity: 1;
+  }
+}
+
+.message-user .message-time {
+  padding-bottom: 4px;
+}
+
+.message-assistant .message-time {
+  position: absolute;
+  top: 4px;
+  right: 2px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--surface), transparent 10%);
+  padding: 1px 5px;
 }
 
 .message-body p {
@@ -838,11 +874,13 @@
   overflow-wrap: anywhere;
 }
 
+/* Tool payloads are commands, queries, and paths — set them in mono. */
 .activity-body p {
   margin: 3px 0 0;
   color: var(--muted-foreground);
-  font-size: 12px;
-  line-height: 1.45;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
