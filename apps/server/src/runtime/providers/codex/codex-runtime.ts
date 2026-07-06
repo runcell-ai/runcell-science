@@ -76,6 +76,7 @@ type CodexResolution = ResolveAgentRequestRequest
 const SESSION_RPC_TIMEOUT_MS = 60_000
 
 const MCP_OVERRIDE_NAME_PATTERN = /^[A-Za-z0-9_-]+$/
+const MCP_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 // Session-scoped connector selection: disable servers via CLI config
 // overrides at spawn time so the user's config.toml stays untouched.
@@ -93,6 +94,20 @@ function codexConfigValue(value: unknown): string {
   return JSON.stringify(value)
 }
 
+export function buildCodexMcpEnvOverrides(name: string, env: Record<string, string>): string[] {
+  const args: string[] = []
+  if (!MCP_OVERRIDE_NAME_PATTERN.test(name)) {
+    return args
+  }
+
+  for (const [envName, value] of Object.entries(env)) {
+    if (MCP_ENV_NAME_PATTERN.test(envName)) {
+      args.push('-c', `mcp_servers.${name}.env.${envName}=${codexConfigValue(value)}`)
+    }
+  }
+  return args
+}
+
 function buildBundledMcpOverrides(session: AgentSession): string[] {
   const args: string[] = []
   const bundled = bundledScienceConnectorsService.getEnabledMcpConfigs(
@@ -107,7 +122,7 @@ function buildBundledMcpOverrides(session: AgentSession): string[] {
     args.push('-c', `mcp_servers.${name}.command=${codexConfigValue(entry.command)}`)
     args.push('-c', `mcp_servers.${name}.args=${codexConfigValue(entry.args ?? [])}`)
     if (entry.env && Object.keys(entry.env).length > 0) {
-      args.push('-c', `mcp_servers.${name}.env=${codexConfigValue(entry.env)}`)
+      args.push(...buildCodexMcpEnvOverrides(name, entry.env))
     }
     args.push('-c', `mcp_servers.${name}.enabled=true`)
   }
