@@ -6,11 +6,13 @@ import type {
   AgentArtifact,
   AgentArtifactKind,
   AgentArtifactMarkdownContentResponse,
+  AgentArtifactFileResponse,
   AgentArtifactStateResponse,
   AgentProvider,
   AgentRuntimeMode,
   ApiErrorResponse,
   PutAgentArtifactStateRequest,
+  PutAgentArtifactFileRequest,
   AgentSessionWorktreeDiffResponse,
   AgentSessionWorktreeDiffStatusResponse,
   CreateAgentArtifactRequest,
@@ -35,7 +37,7 @@ import { classifyWorkspaceFile, listWorkspaceFiles } from '../../services/worksp
 
 const agentProviders: AgentProvider[] = ['codex', 'claude']
 const runtimeModes: AgentRuntimeMode[] = ['full_access', 'default']
-const localArtifactKinds: Exclude<AgentArtifactKind, 'url'>[] = ['image', 'pdf', 'markdown', 'html']
+const localArtifactKinds: Exclude<AgentArtifactKind, 'url'>[] = ['image', 'pdf', 'markdown', 'html', 'custom']
 
 const artifactContentTypes: Record<string, string> = {
   '.apng': 'image/apng',
@@ -375,6 +377,8 @@ const rendererKeyPattern = /^[a-z0-9][a-z0-9:._-]{0,63}$/i
 const mediaTypePattern = /^[\w.+-]+\/[\w.+-]+$/
 /** Cap on serialized artifact metadata; it describes rendering, not data. */
 const maxArtifactMetadataBytes = 16 * 1024
+/** Hard cap for renderer-driven file writes. Artifacts are documents, not bulk datasets. */
+const maxArtifactFileWriteBytes = 5 * 1024 * 1024
 
 type ArtifactPresentationFields = {
   rendererKey?: string | null
@@ -482,6 +486,7 @@ function parseCreateArtifactRequest(body: unknown): CreateAgentArtifactRequest |
       title: typeof body.title === 'string' ? body.title : null,
       turnId: typeof body.turnId === 'string' ? body.turnId : null,
       messageId: typeof body.messageId === 'string' ? body.messageId : null,
+      ...(body.initialState !== undefined ? { initialState: body.initialState } : {}),
       ...presentation
     }
   }
@@ -496,7 +501,7 @@ function parseCreateArtifactRequest(body: unknown): CreateAgentArtifactRequest |
   if (body.kind !== undefined && body.kind !== null && !isLocalArtifactKind(body.kind)) {
     return {
       code: 'bad_request',
-      message: 'kind must be image, pdf, markdown, html, or url.'
+      message: 'kind must be image, pdf, markdown, html, custom, or url.'
     }
   }
 
@@ -506,7 +511,38 @@ function parseCreateArtifactRequest(body: unknown): CreateAgentArtifactRequest |
     title: typeof body.title === 'string' ? body.title : null,
     turnId: typeof body.turnId === 'string' ? body.turnId : null,
     messageId: typeof body.messageId === 'string' ? body.messageId : null,
+    ...(body.initialState !== undefined ? { initialState: body.initialState } : {}),
     ...presentation
+  }
+}
+
+function parseArtifactFileWriteRequest(body: unknown): PutAgentArtifactFileRequest | ApiErrorResponse['error'] {
+  if (!isRecord(body) || typeof body.content !== 'string') {
+    return {
+      code: 'bad_request',
+      message: 'Request body must be a JSON object with a string "content" field.'
+    }
+  }
+
+  if (Buffer.byteLength(body.content, 'utf8') > maxArtifactFileWriteBytes) {
+    return {
+      code: 'bad_request',
+      message: `content must be at most ${maxArtifactFileWriteBytes} bytes.`
+    }
+  }
+
+  if (body.mediaType !== undefined && body.mediaType !== null) {
+    if (typeof body.mediaType !== 'string' || body.mediaType.length > 128 || !mediaTypePattern.test(body.mediaType)) {
+      return {
+        code: 'bad_request',
+        message: 'mediaType must be a valid media type such as "application/json".'
+      }
+    }
+  }
+
+  return {
+    content: body.content,
+    mediaType: typeof body.mediaType === 'string' ? body.mediaType : null
   }
 }
 
@@ -612,6 +648,7 @@ export const sessionsRoute: FastifyPluginAsync = async (server) => {
           source: 'url',
           url: parsed.url,
           title: parsed.title ?? parsed.url,
+          ...(parsed.initialState !== undefined ? { initialState: parsed.initialState } : {}),
           ...presentation
         })
         return reply.code(201).send({ artifact } satisfies CreateAgentArtifactResponse)
@@ -622,9 +659,12 @@ export const sessionsRoute: FastifyPluginAsync = async (server) => {
         return sendApiError(reply, normalizedPath)
       }
 
-      const kind = parsed.kind ?? inferArtifactKindFromPath(normalizedPath)
+      const kind = parsed.kind ?? inferArtifactKindFromPath(normalizedPath) ?? (parsed.rendererKey ? 'custom' : null)
       if (!kind) {
-        return sendBadRequest(reply, 'path must be an image, PDF, Markdown, or HTML file.')
+        return sendBadRequest(reply, 'path must be an image, PDF, Markdown, HTML, or custom renderer-backed file.')
+      }
+      if (kind === 'custom' && !parsed.rendererKey) {
+        return sendBadRequest(reply, 'custom artifacts require rendererKey.')
       }
 
       const artifact = agentSessionService.createArtifact({
@@ -635,6 +675,7 @@ export const sessionsRoute: FastifyPluginAsync = async (server) => {
         source: 'file',
         path: normalizedPath,
         title: parsed.title ?? path.basename(normalizedPath),
+        ...(parsed.initialState !== undefined ? { initialState: parsed.initialState } : {}),
         ...presentation
       })
       return reply.code(201).send({ artifact } satisfies CreateAgentArtifactResponse)
@@ -678,6 +719,61 @@ export const sessionsRoute: FastifyPluginAsync = async (server) => {
     } catch (error) {
       return sendServiceError(reply, error)
     }
+  })
+
+  server.put('/api/sessions/:sessionId/artifacts/:artifactId/file', async (request, reply) => {
+    const params = request.params as { sessionId?: string; artifactId?: string }
+    if (!isNonEmptyString(params.sessionId) || !isNonEmptyString(params.artifactId)) {
+      return sendBadRequest(reply, 'sessionId and artifactId are required.')
+    }
+
+    const parsed = parseArtifactFileWriteRequest(request.body)
+    if ('code' in parsed) {
+      return sendBadRequest(reply, parsed.message)
+    }
+
+    const detail = agentSessionService.getSessionDetail(params.sessionId)
+    if (!detail) {
+      return reply.code(404).send({
+        error: {
+          code: 'not_found',
+          message: 'Session was not found.'
+        }
+      } satisfies ApiErrorResponse)
+    }
+
+    const artifact = detail.artifacts.find((entry) => entry.id === params.artifactId)
+    if (!artifact) {
+      return reply.code(404).send({
+        error: {
+          code: 'not_found',
+          message: 'Artifact was not found in this session.'
+        }
+      } satisfies ApiErrorResponse)
+    }
+    if (artifact.source !== 'file') {
+      return sendBadRequest(reply, 'Only file-backed artifacts can be written.')
+    }
+    if (!artifact.editable) {
+      return sendBadRequest(reply, 'Artifact is not editable.')
+    }
+
+    const resolved = resolveArtifactAssetPath(artifact, detail.session.cwd, '')
+    if (typeof resolved !== 'string') {
+      return sendApiError(reply, resolved)
+    }
+
+    await fs.promises.writeFile(resolved, parsed.content, 'utf8')
+    const updated = agentSessionService.touchArtifact({
+      sessionId: params.sessionId,
+      artifactId: params.artifactId,
+      mediaType: parsed.mediaType
+    })
+
+    return reply.send({
+      artifact: updated,
+      bytesWritten: Buffer.byteLength(parsed.content, 'utf8')
+    } satisfies AgentArtifactFileResponse)
   })
 
   server.get('/api/artifacts/:artifactId/content', async (request, reply) => {

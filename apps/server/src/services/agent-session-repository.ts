@@ -217,6 +217,12 @@ export interface UpsertArtifactStateInput {
   stateJson: string
 }
 
+export interface TouchArtifactInput {
+  sessionId: string
+  artifactId: string
+  mediaType?: string | null
+}
+
 export interface ArtifactStateProjection {
   artifactId: string
   sessionId: string
@@ -942,6 +948,24 @@ export class AgentSessionRepository {
       .get(sessionId, artifactId) as AgentArtifactStateRow | undefined
 
     return row ? mapArtifactState(row) : null
+  }
+
+  touchArtifact(input: TouchArtifactInput): AgentArtifact | null {
+    const timestamp = nowIso()
+    getDb()
+      .prepare(
+        `
+          UPDATE agent_artifacts
+          SET
+            media_type = COALESCE(?, media_type),
+            updated_at = ?
+          WHERE id = ?
+            AND session_id = ?
+        `
+      )
+      .run(input.mediaType ?? null, timestamp, input.artifactId, input.sessionId)
+
+    return this.findArtifact(input.artifactId)
   }
 
   /** Writes artifact state and bumps the artifact's updated_at in the same

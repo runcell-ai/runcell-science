@@ -25,19 +25,18 @@ function normalizedCwd(cwd: string): string {
   return path.resolve(cwd)
 }
 
-function enabledNamesForCwd(cwd: string): Set<string> {
+function enablementOverridesForCwd(cwd: string): Map<string, boolean> {
   const rows = getDb()
     .prepare(
       `
         SELECT connector_name, cwd, enabled
         FROM bundled_science_connector_enablement
         WHERE cwd = ?
-          AND enabled = 1
       `
     )
     .all(normalizedCwd(cwd)) as EnablementRow[]
 
-  return new Set(rows.map((row) => row.connector_name))
+  return new Map(rows.map((row) => [row.connector_name, row.enabled === 1]))
 }
 
 function connectorCliPath(): string {
@@ -54,22 +53,25 @@ function toMcpConfig(name: string): McpServerConfigInput {
 
 export class BundledScienceConnectorsService {
   listConnectors(cwd: string): ListBundledScienceConnectorsResponse {
-    const enabled = enabledNamesForCwd(cwd)
+    const overrides = enablementOverridesForCwd(cwd)
     return {
-      connectors: bundledScienceConnectors.map((connector) => ({
-        id: connector.id,
-        name: connector.name,
-        displayName: connector.displayName,
-        description: connector.description,
-        batch: connector.batch,
-        transport: connector.transport,
-        auth: connector.auth,
-        upstreams: connector.upstreams,
-        status: connector.status,
-        toolCount: connector.toolCount,
-        enabled: enabled.has(connector.name),
-        scope: 'project'
-      })) satisfies BundledScienceConnectorView[]
+      connectors: bundledScienceConnectors.map((connector) => {
+        const override = overrides.get(connector.name)
+        return {
+          id: connector.id,
+          name: connector.name,
+          displayName: connector.displayName,
+          description: connector.description,
+          batch: connector.batch,
+          transport: connector.transport,
+          auth: connector.auth,
+          upstreams: connector.upstreams,
+          status: connector.status,
+          toolCount: connector.toolCount,
+          enabled: override ?? connector.defaultEnabled === true,
+          scope: 'project'
+        }
+      }) satisfies BundledScienceConnectorView[]
     }
   }
 
@@ -94,11 +96,12 @@ export class BundledScienceConnectorsService {
   }
 
   getEnabledMcpConfigs(cwd: string, disabledServers: string[] = []): Record<string, McpServerConfigInput> {
-    const enabled = enabledNamesForCwd(cwd)
+    const overrides = enablementOverridesForCwd(cwd)
     const disabled = new Set(disabledServers)
     const configs: Record<string, McpServerConfigInput> = {}
     for (const connector of bundledScienceConnectors) {
-      if (enabled.has(connector.name) && !disabled.has(connector.name)) {
+      const enabled = overrides.get(connector.name) ?? connector.defaultEnabled === true
+      if (enabled && !disabled.has(connector.name)) {
         configs[connector.name] = toMcpConfig(connector.name)
       }
     }

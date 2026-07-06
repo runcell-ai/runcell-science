@@ -23,6 +23,8 @@ export interface ArtifactRendererProps {
   readState?: () => Promise<unknown>
   /** Writes the artifact's persisted JSON state. Absent on read-only artifacts. */
   saveState?: (state: unknown) => Promise<unknown>
+  /** Writes the artifact's backing file. Absent on read-only or non-file artifacts. */
+  saveFile?: (content: string, mediaType?: string | null) => Promise<void>
 }
 
 export type ArtifactRenderer = ComponentType<ArtifactRendererProps>
@@ -56,6 +58,9 @@ export function getArtifactRenderer(key: string): ArtifactRenderer | null {
 export function rendererKeyForArtifact(artifact: AgentArtifact): string {
   if (artifact.rendererKey) {
     return artifact.rendererKey
+  }
+  if (artifact.kind === 'custom') {
+    return 'custom'
   }
   switch (artifact.kind) {
     case 'image':

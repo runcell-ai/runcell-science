@@ -47,7 +47,7 @@ export type AgentMessageStatus = 'pending' | 'streaming' | 'completed' | 'failed
 
 export type AgentPendingRequestStatus = 'open' | 'resolved'
 
-export type AgentArtifactKind = 'image' | 'pdf' | 'markdown' | 'html' | 'url'
+export type AgentArtifactKind = 'image' | 'pdf' | 'markdown' | 'html' | 'custom' | 'url'
 
 export type AgentArtifactSource = 'file' | 'url'
 
@@ -269,6 +269,8 @@ export type CreateAgentArtifactRequest =
       messageId?: string | null
       /** Re-focus the artifact in the UI even when it already exists. */
       focus?: boolean
+      /** Optional renderer state written before the artifact.created event is published. */
+      initialState?: unknown
     })
   | (AgentArtifactPresentation & {
       kind?: 'url'
@@ -278,6 +280,8 @@ export type CreateAgentArtifactRequest =
       messageId?: string | null
       /** Re-focus the artifact in the UI even when it already exists. */
       focus?: boolean
+      /** Optional renderer state written before the artifact.created event is published. */
+      initialState?: unknown
     })
 
 export interface CreateAgentArtifactResponse {
@@ -295,6 +299,16 @@ export interface AgentArtifactStateResponse {
 
 export interface PutAgentArtifactStateRequest {
   state: unknown
+}
+
+export interface PutAgentArtifactFileRequest {
+  content: string
+  mediaType?: string | null
+}
+
+export interface AgentArtifactFileResponse {
+  artifact: AgentArtifact
+  bytesWritten: number
 }
 
 export interface AgentArtifactMarkdownContentResponse {

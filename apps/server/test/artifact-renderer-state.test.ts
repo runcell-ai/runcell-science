@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -164,6 +164,37 @@ test('artifact state round-trips and stays scoped to its session', () => {
   )
 })
 
+test('artifact initial state is readable when artifact.created is published', () => {
+  const repository = new AgentSessionRepository()
+  const service = new AgentSessionService(repository)
+  const sessionId = createSession(service)
+  const initialState = { version: 1, smiles: 'CC(=O)OC1=CC=CC=C1C(=O)O', dirty: true }
+  let stateSeenDuringCreatedEvent: unknown = null
+
+  const unsubscribe = sessionEventBus.subscribe(sessionId, (event) => {
+    if (event.type === 'artifact.created') {
+      stateSeenDuringCreatedEvent = service.getArtifactState(sessionId, event.artifact.id).state
+    }
+  })
+  try {
+    const artifact = service.createArtifact({
+      sessionId,
+      kind: 'custom',
+      source: 'file',
+      path: 'aspirin.ket',
+      rendererKey: 'chem:ketcher',
+      editable: true,
+      focus: true,
+      initialState
+    })
+
+    assert.deepEqual(stateSeenDuringCreatedEvent, initialState)
+    assert.deepEqual(service.getArtifactState(sessionId, artifact.id).state, initialState)
+  } finally {
+    unsubscribe()
+  }
+})
+
 test('artifact state writes reject oversized payloads and publish artifact.updated', () => {
   const repository = new AgentSessionRepository()
   const service = new AgentSessionService(repository)
@@ -261,7 +292,8 @@ test('artifact routes accept renderer fields and serve scoped state', async () =
         rendererKey: 'test:generic-panel',
         mediaType: 'text/html',
         metadata: { layout: 'grid' },
-        editable: true
+        editable: true,
+        initialState: { page: 1 }
       }
     })
     assert.equal(created.statusCode, 201)
@@ -276,7 +308,7 @@ test('artifact routes accept renderer fields and serve scoped state', async () =
       url: `/api/sessions/${sessionId}/artifacts/${artifact.id}/state`
     })
     assert.equal(emptyState.statusCode, 200)
-    assert.equal(emptyState.json().state, null)
+    assert.deepEqual(emptyState.json().state, { page: 1 })
 
     const put = await server.inject({
       method: 'PUT',
@@ -364,6 +396,116 @@ test('artifact routes reject malformed renderer fields', async () => {
     assert.equal(plain.json().artifact.kind, 'html')
     assert.equal(plain.json().artifact.rendererKey, null)
     assert.equal(plain.json().artifact.editable, false)
+  } finally {
+    await server.close()
+    rmSync(workspace, { recursive: true, force: true })
+  }
+})
+
+test('artifact routes allow custom file artifacts when a renderer is declared', async () => {
+  const workspace = mkdtempSync(path.join(os.tmpdir(), 'open-science-artifact-route-custom-'))
+  const server = await makeServer()
+  try {
+    writeFileSync(path.join(workspace, 'panel.widget'), '{"ok":true}')
+    const sessionId = createSession(agentSessionService, workspace)
+
+    const missingRenderer = await server.inject({
+      method: 'POST',
+      url: `/api/sessions/${sessionId}/artifacts`,
+      payload: { path: 'panel.widget', kind: 'custom' }
+    })
+    assert.equal(missingRenderer.statusCode, 400)
+
+    const inferredCustom = await server.inject({
+      method: 'POST',
+      url: `/api/sessions/${sessionId}/artifacts`,
+      payload: {
+        path: 'panel.widget',
+        rendererKey: 'test:generic-panel',
+        mediaType: 'application/vnd.test-widget+json',
+        metadata: { mode: 'interactive' },
+        editable: true
+      }
+    })
+    assert.equal(inferredCustom.statusCode, 201)
+    assert.equal(inferredCustom.json().artifact.kind, 'custom')
+    assert.equal(inferredCustom.json().artifact.rendererKey, 'test:generic-panel')
+    assert.equal(inferredCustom.json().artifact.mediaType, 'application/vnd.test-widget+json')
+    assert.deepEqual(inferredCustom.json().artifact.metadata, { mode: 'interactive' })
+    assert.equal(inferredCustom.json().artifact.editable, true)
+
+    const explicitCustom = await server.inject({
+      method: 'POST',
+      url: `/api/sessions/${sessionId}/artifacts`,
+      payload: {
+        path: 'panel.widget',
+        kind: 'custom',
+        rendererKey: 'test:generic-panel'
+      }
+    })
+    assert.equal(explicitCustom.statusCode, 201)
+    assert.equal(explicitCustom.json().artifact.id, inferredCustom.json().artifact.id)
+  } finally {
+    await server.close()
+    rmSync(workspace, { recursive: true, force: true })
+  }
+})
+
+test('artifact file route writes only editable file-backed artifacts in the owning session', async () => {
+  const workspace = mkdtempSync(path.join(os.tmpdir(), 'open-science-artifact-file-write-'))
+  const server = await makeServer()
+  try {
+    const filePath = path.join(workspace, 'panel.widget')
+    writeFileSync(filePath, '{"ok":false}')
+    const sessionId = createSession(agentSessionService, workspace)
+    const otherSessionId = createSession(agentSessionService, workspace)
+
+    const created = await server.inject({
+      method: 'POST',
+      url: `/api/sessions/${sessionId}/artifacts`,
+      payload: {
+        path: 'panel.widget',
+        kind: 'custom',
+        rendererKey: 'test:generic-panel',
+        editable: true
+      }
+    })
+    assert.equal(created.statusCode, 201)
+    const artifact = created.json().artifact
+
+    const written = await server.inject({
+      method: 'PUT',
+      url: `/api/sessions/${sessionId}/artifacts/${artifact.id}/file`,
+      payload: {
+        content: '{"ok":true}',
+        mediaType: 'application/vnd.test-widget+json'
+      }
+    })
+    assert.equal(written.statusCode, 200)
+    assert.equal(written.json().bytesWritten, Buffer.byteLength('{"ok":true}', 'utf8'))
+    assert.equal(written.json().artifact.mediaType, 'application/vnd.test-widget+json')
+    assert.equal(readFileSync(filePath, 'utf8'), '{"ok":true}')
+
+    const crossWrite = await server.inject({
+      method: 'PUT',
+      url: `/api/sessions/${otherSessionId}/artifacts/${artifact.id}/file`,
+      payload: { content: '{}' }
+    })
+    assert.equal(crossWrite.statusCode, 404)
+
+    writeFileSync(path.join(workspace, 'readonly.html'), '<html></html>')
+    const readonlyCreated = await server.inject({
+      method: 'POST',
+      url: `/api/sessions/${sessionId}/artifacts`,
+      payload: { path: 'readonly.html' }
+    })
+    assert.equal(readonlyCreated.statusCode, 201)
+    const readonlyWrite = await server.inject({
+      method: 'PUT',
+      url: `/api/sessions/${sessionId}/artifacts/${readonlyCreated.json().artifact.id}/file`,
+      payload: { content: '<html>updated</html>' }
+    })
+    assert.equal(readonlyWrite.statusCode, 400)
   } finally {
     await server.close()
     rmSync(workspace, { recursive: true, force: true })

@@ -1,5 +1,5 @@
 export interface HttpRequestOptions {
-  method?: 'GET' | 'POST'
+  method?: 'GET' | 'POST' | 'PUT'
   headers?: Record<string, string>
   body?: string
   timeoutMs?: number

@@ -144,7 +144,7 @@ export class ClaudeRuntime implements CodeAgentProviderRuntime {
       },
       env: {
         ...sanitizedProcessEnv(),
-        ...agentIntegrationEnv(),
+        ...agentIntegrationEnv(activeTurn.sessionId),
         CLAUDE_AGENT_SDK_CLIENT_APP: 'open-science/0.1.0',
         ...(config.claudeConfigDir ? { CLAUDE_CONFIG_DIR: config.claudeConfigDir } : {})
       },

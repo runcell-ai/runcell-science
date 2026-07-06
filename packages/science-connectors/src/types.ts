@@ -24,6 +24,8 @@ export interface ScienceConnectorDefinition {
   upstreams: ScienceConnectorUpstream[]
   status: ConnectorStatus
   toolCount: number
+  /** Local, no-auth connectors that should be available in new project sessions unless explicitly disabled. */
+  defaultEnabled?: boolean
 }
 
 export interface ToolSource {

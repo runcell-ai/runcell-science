@@ -193,7 +193,7 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
   private async createInitializedState(session: AgentSession): Promise<CodexSessionState> {
     const client = new CodexJsonRpcClient({
       binaryPath: config.codexBinaryPath,
-      env: this.buildEnv(),
+      env: this.buildEnv(session.id),
       extraArgs: [
         ...buildBundledMcpOverrides(session),
         ...buildMcpDisableOverrides(session.disabledMcpServers)
@@ -588,10 +588,10 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
     return null
   }
 
-  private buildEnv(): NodeJS.ProcessEnv {
+  private buildEnv(sessionId: string): NodeJS.ProcessEnv {
     return {
       ...sanitizedProcessEnv(),
-      ...agentIntegrationEnv(),
+      ...agentIntegrationEnv(sessionId),
       ...(config.codexHome ? { CODEX_HOME: config.codexHome } : {})
     }
   }

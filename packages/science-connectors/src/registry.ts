@@ -292,6 +292,27 @@ export const bundledScienceConnectors: ScienceConnectorDefinition[] = [
     toolCount: 3
   },
   {
+    id: 'bundled:ketcher-chemistry',
+    name: 'ketcher-chemistry',
+    displayName: 'Ketcher Chemistry',
+    description: 'Interactive Ketcher structure editor artifact tools for opening, exporting, and saving molecules.',
+    batch: 'P2',
+    transport: 'stdio',
+    auth: 'none',
+    command: 'node',
+    args: cliArgs('ketcher-chemistry'),
+    upstreams: [
+      {
+        name: 'Ketcher',
+        license: 'Apache-2.0',
+        infoUrl: 'https://github.com/epam/ketcher'
+      }
+    ],
+    status: 'implemented',
+    toolCount: 4,
+    defaultEnabled: true
+  },
+  {
     id: 'bundled:human-genetics',
     name: 'human-genetics',
     displayName: 'Human Genetics',

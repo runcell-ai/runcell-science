@@ -92,12 +92,20 @@ export interface CaptureTurnCheckpointBaselineInput {
 export type CreateSessionArtifactInput = CreateAgentArtifactInput & {
   /** Ask clients to focus/open the artifact even when it already exists. */
   focus?: boolean
+  /** Optional renderer state written before clients receive artifact.created. */
+  initialState?: unknown
 }
 
 export interface WriteArtifactStateInput {
   sessionId: string
   artifactId: string
   state: unknown
+}
+
+export interface TouchArtifactInput {
+  sessionId: string
+  artifactId: string
+  mediaType?: string | null
 }
 
 export interface ArtifactStateResult {
@@ -127,6 +135,25 @@ function isUnsafeRelativeArtifactPath(filePath: string): boolean {
     /^[A-Za-z]:[\\/]/.test(filePath) ||
     filePath.split(/[\\/]+/).includes('..')
   )
+}
+
+function serializeArtifactState(state: unknown): string {
+  if (state === undefined) {
+    throw new AgentSessionServiceError('bad_request', 'state is required.', 400)
+  }
+
+  const stateJson = JSON.stringify(state)
+  if (typeof stateJson !== 'string') {
+    throw new AgentSessionServiceError('bad_request', 'state must be JSON-serializable.', 400)
+  }
+  if (Buffer.byteLength(stateJson, 'utf8') > maxArtifactStateBytes) {
+    throw new AgentSessionServiceError(
+      'bad_request',
+      `state must be at most ${maxArtifactStateBytes} bytes when serialized.`,
+      400
+    )
+  }
+  return stateJson
 }
 
 export function inferArtifactKindFromPath(filePath: string): Exclude<AgentArtifactKind, 'url'> | null {
@@ -199,16 +226,26 @@ export class AgentSessionService {
     }
 
     const projection = this.repository.createArtifact(input)
+    let artifact = projection.artifact
+    if (input.initialState !== undefined) {
+      this.repository.upsertArtifactState({
+        sessionId: input.sessionId,
+        artifactId: projection.artifact.id,
+        stateJson: serializeArtifactState(input.initialState)
+      })
+      artifact = this.requireSessionArtifact(input.sessionId, projection.artifact.id)
+    }
+
     sessionEventBus.publish({
       id: createEventId(),
       type: projection.created ? 'artifact.created' : 'artifact.updated',
-      sessionId: projection.artifact.sessionId,
-      turnId: projection.artifact.turnId,
-      createdAt: projection.artifact.updatedAt,
-      artifact: projection.artifact,
+      sessionId: artifact.sessionId,
+      turnId: artifact.turnId,
+      createdAt: artifact.updatedAt,
+      artifact,
       ...(input.focus ? { focus: true } : {})
     })
-    return projection.artifact
+    return artifact
   }
 
   getArtifactState(sessionId: string, artifactId: string): ArtifactStateResult {
@@ -224,26 +261,10 @@ export class AgentSessionService {
   writeArtifactState(input: WriteArtifactStateInput): ArtifactStateResult {
     this.requireSessionArtifact(input.sessionId, input.artifactId)
 
-    if (input.state === undefined) {
-      throw new AgentSessionServiceError('bad_request', 'state is required.', 400)
-    }
-
-    const stateJson = JSON.stringify(input.state)
-    if (typeof stateJson !== 'string') {
-      throw new AgentSessionServiceError('bad_request', 'state must be JSON-serializable.', 400)
-    }
-    if (Buffer.byteLength(stateJson, 'utf8') > maxArtifactStateBytes) {
-      throw new AgentSessionServiceError(
-        'bad_request',
-        `state must be at most ${maxArtifactStateBytes} bytes when serialized.`,
-        400
-      )
-    }
-
     const projection = this.repository.upsertArtifactState({
       sessionId: input.sessionId,
       artifactId: input.artifactId,
-      stateJson
+      stateJson: serializeArtifactState(input.state)
     })
 
     // upsertArtifactState bumps the artifact's updated_at, so the published
@@ -263,6 +284,25 @@ export class AgentSessionService {
       state: parseStateJson(projection.stateJson),
       updatedAt: projection.updatedAt
     }
+  }
+
+  touchArtifact(input: TouchArtifactInput): AgentArtifact {
+    this.requireSessionArtifact(input.sessionId, input.artifactId)
+    const artifact = this.repository.touchArtifact(input)
+    if (!artifact) {
+      throw new AgentSessionServiceError('not_found', 'Artifact was not found in this session.', 404)
+    }
+
+    sessionEventBus.publish({
+      id: createEventId(),
+      type: 'artifact.updated',
+      sessionId: artifact.sessionId,
+      turnId: artifact.turnId,
+      createdAt: artifact.updatedAt,
+      artifact
+    })
+
+    return artifact
   }
 
   private requireSessionArtifact(sessionId: string, artifactId: string): AgentArtifact {

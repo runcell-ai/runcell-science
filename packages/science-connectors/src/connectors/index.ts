@@ -15,6 +15,7 @@ import drugRegulatory from './drug-regulatory/index.js'
 import researchResources from './research-resources/index.js'
 import cancerModels from './cancer-models/index.js'
 import chemistry from './chemistry/index.js'
+import ketcherChemistry from './ketcher-chemistry/index.js'
 import humanGenetics from './human-genetics/index.js'
 import genomes from './genomes/index.js'
 import rna from './rna/index.js'
@@ -40,6 +41,7 @@ export const connectorModules: Record<string, ScienceConnectorModule> = {
   'research-resources': researchResources,
   'cancer-models': cancerModels,
   chemistry,
+  'ketcher-chemistry': ketcherChemistry,
   'human-genetics': humanGenetics,
   genomes,
   rna,

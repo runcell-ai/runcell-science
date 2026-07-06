@@ -31,9 +31,10 @@ test('bundled science connector enablement is project scoped and produces MCP co
 
   const initial = bundledScienceConnectorsService.listConnectors(cwd)
   assert.ok(initial.connectors.length >= 22)
-  const connectorName = initial.connectors[0]?.name
-  assert.ok(connectorName)
+  const connectorName = 'biomart'
+  assert.ok(initial.connectors.some((connector) => connector.name === connectorName))
   assert.equal(initial.connectors.find((connector) => connector.name === connectorName)?.enabled, false)
+  assert.equal(initial.connectors.find((connector) => connector.name === 'ketcher-chemistry')?.enabled, true)
 
   bundledScienceConnectorsService.setEnabled({ cwd, name: connectorName, enabled: true })
 
@@ -48,7 +49,17 @@ test('bundled science connector enablement is project scoped and produces MCP co
   assert.equal(config?.command, 'node')
   assert.ok(config?.args?.[0]?.endsWith('packages/science-connectors/dist/cli.js'))
   assert.deepEqual(config?.args?.slice(1), ['connector', connectorName])
+  assert.equal(configs['ketcher-chemistry']?.type, 'stdio')
 
   const disabledForSession = bundledScienceConnectorsService.getEnabledMcpConfigs(cwd, [connectorName])
   assert.equal(disabledForSession[connectorName], undefined)
+  assert.equal(disabledForSession['ketcher-chemistry']?.type, 'stdio')
+
+  const ketcherDisabledForSession = bundledScienceConnectorsService.getEnabledMcpConfigs(cwd, ['ketcher-chemistry'])
+  assert.equal(ketcherDisabledForSession['ketcher-chemistry'], undefined)
+
+  bundledScienceConnectorsService.setEnabled({ cwd, name: 'ketcher-chemistry', enabled: false })
+  const afterKetcherDisable = bundledScienceConnectorsService.listConnectors(cwd)
+  assert.equal(afterKetcherDisable.connectors.find((connector) => connector.name === 'ketcher-chemistry')?.enabled, false)
+  assert.equal(bundledScienceConnectorsService.getEnabledMcpConfigs(cwd)['ketcher-chemistry'], undefined)
 })

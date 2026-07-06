@@ -34,6 +34,7 @@ test('artifacts without a renderer key map to built-in renderer keys by kind', (
   assert.equal(rendererKeyForArtifact(fileArtifact({ kind: 'markdown' })), builtinRendererKeys.markdown)
   assert.equal(rendererKeyForArtifact(fileArtifact({ kind: 'pdf' })), builtinRendererKeys.embed)
   assert.equal(rendererKeyForArtifact(fileArtifact({ kind: 'html' })), builtinRendererKeys.embed)
+  assert.equal(rendererKeyForArtifact(fileArtifact({ kind: 'custom' })), 'custom')
   assert.equal(
     rendererKeyForArtifact(
       fileArtifact({ kind: 'url', source: 'url', path: null, url: 'https://example.com' } as Partial<AgentArtifact>)

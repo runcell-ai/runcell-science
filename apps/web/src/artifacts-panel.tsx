@@ -22,6 +22,7 @@ import {
 import ReactMarkdown from 'react-markdown'
 import type {
   AgentArtifact,
+  AgentArtifactFileResponse,
   AgentArtifactMarkdownContentResponse,
   AgentArtifactStateResponse,
   ListWorkspaceFilesResponse,
@@ -36,6 +37,11 @@ import {
   resolveArtifactRenderer,
   type ArtifactRendererProps
 } from './lib/artifact-renderers'
+const KetcherArtifactRenderer = lazy(() =>
+  import('./artifact-renderers/ketcher-artifact-renderer').then((module) => ({
+    default: module.KetcherArtifactRenderer
+  }))
+)
 
 const NotebookViewer = lazy(() => import('./notebook/notebook-viewer'))
 
@@ -395,6 +401,7 @@ function MarkdownArtifactRenderer({ artifact, reloadNonce, fetchText }: Artifact
 registerArtifactRenderer(builtinRendererKeys.image, ImageArtifactRenderer)
 registerArtifactRenderer(builtinRendererKeys.embed, EmbedArtifactRenderer)
 registerArtifactRenderer(builtinRendererKeys.markdown, MarkdownArtifactRenderer)
+registerArtifactRenderer('chem:ketcher', KetcherArtifactRenderer)
 
 /** Fallback for artifacts declaring a renderer key this build does not know. */
 function UnsupportedInteractiveArtifact({
@@ -538,6 +545,29 @@ function PreviewSurface({
     [artifactStateUrl]
   )
 
+  const saveFileUrl =
+    artifactId === null
+      ? null
+      : `${apiBaseUrl}/api/sessions/${encodeURIComponent(sessionId)}/artifacts/${encodeURIComponent(artifactId)}/file`
+
+  const saveFile = useCallback(
+    async (content: string, mediaType?: string | null): Promise<void> => {
+      if (!saveFileUrl) {
+        return
+      }
+      const response = await fetch(saveFileUrl, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ content, mediaType: mediaType ?? null })
+      })
+      if (!response.ok) {
+        throw new Error(await readError(response))
+      }
+      await response.json() as AgentArtifactFileResponse
+    },
+    [saveFileUrl]
+  )
+
   // Artifact previews own their content fetching (via renderer props), so the
   // workspace-file text machinery below must not fetch for them.
   const fetchText = model.render === 'artifact' ? undefined : model.fetchText
@@ -587,16 +617,26 @@ function PreviewSurface({
     }
     const Renderer = resolution.Renderer
     return (
-      <Renderer
-        key={model.key}
-        artifact={artifact}
-        src={model.src}
-        metadata={artifact.metadata ?? null}
-        reloadNonce={effectiveReloadNonce}
-        fetchText={model.fetchText}
-        readState={readState}
-        saveState={artifact.editable ? saveState : undefined}
-      />
+      <Suspense
+        fallback={
+          <div className="side-panel-loading">
+            <Loader2 className="spin-icon" />
+            Loading
+          </div>
+        }
+      >
+        <Renderer
+          key={model.key}
+          artifact={artifact}
+          src={model.src}
+          metadata={artifact.metadata ?? null}
+          reloadNonce={effectiveReloadNonce}
+          fetchText={model.fetchText}
+          readState={readState}
+          saveState={artifact.editable ? saveState : undefined}
+          saveFile={artifact.editable && artifact.source === 'file' ? saveFile : undefined}
+        />
+      </Suspense>
     )
   }
 

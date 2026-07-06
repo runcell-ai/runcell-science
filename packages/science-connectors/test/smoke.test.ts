@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import http from 'node:http'
+import os from 'node:os'
 import { test } from 'node:test'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -136,3 +139,115 @@ for (const [connector, calls] of Object.entries(smokeMatrix)) {
     }
   })
 }
+
+test('ketcher-chemistry MCP artifact smoke', { timeout: 30_000 }, async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'open-science-ketcher-smoke-'))
+  const sessionId = 'session-ketcher-smoke'
+  const artifactId = 'artifact-ketcher-smoke'
+  let state: unknown = null
+
+  const mockServer = http.createServer(async (request, response) => {
+    const chunks: Buffer[] = []
+    for await (const chunk of request) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    }
+    const bodyText = Buffer.concat(chunks).toString('utf8')
+    const body = bodyText ? JSON.parse(bodyText) as Record<string, unknown> : null
+    const url = request.url ?? ''
+
+    response.setHeader('content-type', 'application/json')
+    if (request.method === 'GET' && url === `/api/sessions/${sessionId}`) {
+      response.end(JSON.stringify({ session: { id: sessionId, cwd: workspace }, artifacts: [] }))
+      return
+    }
+    if (request.method === 'POST' && url === `/api/sessions/${sessionId}/artifacts`) {
+      state = body?.initialState
+      response.statusCode = 201
+      response.end(
+        JSON.stringify({
+          artifact: {
+            id: artifactId,
+            path: body?.path,
+            rendererKey: body?.rendererKey,
+            mediaType: body?.mediaType
+          }
+        })
+      )
+      return
+    }
+    if (request.method === 'PUT' && url === `/api/sessions/${sessionId}/artifacts/${artifactId}/state`) {
+      state = body?.state
+      response.end(
+        JSON.stringify({
+          artifact: { id: artifactId, path: 'aspirin.ket', rendererKey: 'chem:ketcher' },
+          state,
+          updatedAt: new Date().toISOString()
+        })
+      )
+      return
+    }
+    if (request.method === 'GET' && url === `/api/sessions/${sessionId}/artifacts/${artifactId}/state`) {
+      response.end(
+        JSON.stringify({
+          artifact: { id: artifactId, path: 'aspirin.ket', rendererKey: 'chem:ketcher' },
+          state,
+          updatedAt: new Date().toISOString()
+        })
+      )
+      return
+    }
+    if (request.method === 'PUT' && url === `/api/sessions/${sessionId}/artifacts/${artifactId}/file`) {
+      response.end(JSON.stringify({ bytesWritten: String(body?.content ?? '').length }))
+      return
+    }
+
+    response.statusCode = 404
+    response.end(JSON.stringify({ error: { message: `unhandled ${request.method} ${url}` } }))
+  })
+
+  await new Promise<void>((resolve) => mockServer.listen(0, '127.0.0.1', resolve))
+  const address = mockServer.address()
+  assert.ok(address && typeof address === 'object')
+
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: ['--import', 'tsx', 'src/cli.ts', 'connector', 'ketcher-chemistry'],
+    cwd: packageRoot,
+    stderr: 'pipe',
+    env: {
+      ...process.env,
+      OPEN_SCIENCE_API_URL: `http://127.0.0.1:${address.port}`,
+      OPEN_SCIENCE_SESSION_ID: sessionId
+    }
+  })
+  const client = new Client({ name: 'open-science-ketcher-smoke', version: '0.1.0' })
+  try {
+    await client.connect(transport)
+    const tools = await client.listTools()
+    const toolNames = new Set(tools.tools.map((tool) => tool.name))
+    assert.ok(toolNames.has('open_sketcher'))
+    assert.ok(toolNames.has('export_structure'))
+
+    const opened = await client.callTool({
+      name: 'open_sketcher',
+      arguments: {
+        filename: 'aspirin',
+        smiles: 'CC(=O)OC1=CC=CC=C1C(=O)O'
+      }
+    })
+    assert.equal(opened.isError, undefined, JSON.stringify(opened.content))
+    assert.equal(fs.existsSync(path.join(workspace, 'aspirin.ket')), true)
+    assert.deepEqual((state as { smiles?: string } | null)?.smiles, 'CC(=O)OC1=CC=CC=C1C(=O)O')
+
+    const exported = await client.callTool({
+      name: 'export_structure',
+      arguments: { artifactId, formats: ['smiles'] }
+    })
+    assert.equal(exported.isError, undefined, JSON.stringify(exported.content))
+    assert.match(JSON.stringify(exported.content), /CC\(=O\)OC1=CC=CC=C1C\(=O\)O/)
+  } finally {
+    await client.close()
+    await new Promise<void>((resolve) => mockServer.close(() => resolve()))
+    fs.rmSync(workspace, { recursive: true, force: true })
+  }
+})
