@@ -149,9 +149,27 @@ const galleryTimelineItems: AgentTimelineItem[] = [
       role: 'user',
       text: 'Extract the agent session UI and prompt composer into the UI package.',
       status: 'completed',
+      phase: null,
       providerItemId: null,
       createdAt: '2026-07-01T12:00:00.000Z',
       updatedAt: '2026-07-01T12:00:00.000Z'
+    }
+  },
+  {
+    id: 'message-1b',
+    type: 'message',
+    createdAt: '2026-07-01T12:00:30.000Z',
+    message: {
+      id: 'message-1b',
+      sessionId: 'session-1',
+      turnId: 'turn-1',
+      role: 'assistant',
+      text: 'I will inspect the existing session UI first, then move the components over.',
+      status: 'completed',
+      phase: 'commentary',
+      providerItemId: null,
+      createdAt: '2026-07-01T12:00:30.000Z',
+      updatedAt: '2026-07-01T12:00:30.000Z'
     }
   },
   {
@@ -163,12 +181,47 @@ const galleryTimelineItems: AgentTimelineItem[] = [
       sessionId: 'session-1',
       turnId: 'turn-1',
       provider: 'codex',
-      eventType: 'tool.call.started',
+      eventType: 'item.completed',
       streamKind: null,
-      title: 'Read app.tsx',
-      summary: 'Inspecting existing session, prompt, and tool-call rendering.',
+      title: 'Command',
+      summary:
+        "/bin/zsh -lc \"rg --files -g '*.tsx' apps/web/src | head -40 && cat apps/web/src/app.tsx\"",
       status: 'completed',
       createdAt: '2026-07-01T12:01:00.000Z'
+    }
+  },
+  {
+    id: 'message-1c',
+    type: 'message',
+    createdAt: '2026-07-01T12:01:20.000Z',
+    message: {
+      id: 'message-1c',
+      sessionId: 'session-1',
+      turnId: 'turn-1',
+      role: 'assistant',
+      text: 'The timeline, composer, and sidebar are entangled in `app.tsx`. Extracting the timeline first.',
+      status: 'completed',
+      phase: 'commentary',
+      providerItemId: null,
+      createdAt: '2026-07-01T12:01:20.000Z',
+      updatedAt: '2026-07-01T12:01:20.000Z'
+    }
+  },
+  {
+    id: 'event-1b',
+    type: 'activity',
+    createdAt: '2026-07-01T12:01:40.000Z',
+    event: {
+      id: 'event-1b',
+      sessionId: 'session-1',
+      turnId: 'turn-1',
+      provider: 'codex',
+      eventType: 'warning',
+      streamKind: null,
+      title: 'warning',
+      summary: 'Sandbox denied write outside workspace; retrying inside packages/ui.',
+      status: 'failed',
+      createdAt: '2026-07-01T12:01:40.000Z'
     }
   },
   {
@@ -206,9 +259,27 @@ const galleryTimelineItems: AgentTimelineItem[] = [
         'Next I suggest extracting the artifact preview panel as well.'
       ].join('\n'),
       status: 'completed',
+      phase: 'final_answer',
       providerItemId: null,
       createdAt: '2026-07-01T12:03:00.000Z',
       updatedAt: '2026-07-01T12:03:00.000Z'
+    }
+  },
+  {
+    id: 'message-3',
+    type: 'message',
+    createdAt: '2026-07-01T12:04:00.000Z',
+    message: {
+      id: 'message-3',
+      sessionId: 'session-1',
+      turnId: 'turn-2',
+      role: 'user',
+      text: 'Great — extract the artifact preview panel next.',
+      status: 'completed',
+      phase: null,
+      providerItemId: null,
+      createdAt: '2026-07-01T12:04:00.000Z',
+      updatedAt: '2026-07-01T12:04:00.000Z'
     }
   }
 ]

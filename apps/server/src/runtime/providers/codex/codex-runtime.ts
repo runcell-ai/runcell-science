@@ -412,6 +412,14 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
         this.recordItemActivity('started', notification.params.threadId, notification.params.turnId, notification.params.item, message)
         return
       case 'item/completed':
+        if (notification.params.item.type === 'agentMessage') {
+          this.handleAgentMessageCompleted(
+            notification.params.turnId,
+            notification.params.item,
+            message
+          )
+          return
+        }
         this.recordItemActivity(
           'completed',
           notification.params.threadId,
@@ -453,6 +461,39 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
         providerTurnId: params.turnId,
         providerItemId: params.itemId,
         delta: params.delta
+      }
+    })
+  }
+
+  /**
+   * The completed agentMessage item is the authoritative message boundary:
+   * its text supersedes the streamed deltas and it is the only carrier of
+   * the Codex message phase (commentary vs final_answer).
+   */
+  private handleAgentMessageCompleted(
+    providerTurnId: string,
+    item: Extract<ThreadItem, { type: 'agentMessage' }>,
+    rawMessage: CodexJsonRpcMessage
+  ): void {
+    const binding = this.findTurnBinding(providerTurnId)
+    if (!binding) {
+      return
+    }
+
+    agentSessionService.completeAssistantMessageItem({
+      sessionId: binding.sessionId,
+      turnId: binding.localTurnId,
+      provider: 'codex',
+      providerItemId: item.id,
+      text: item.text,
+      phase: item.phase ?? null,
+      rawSource: 'codex.app-server.notification',
+      rawJson: rawMessage,
+      canonicalJson: {
+        type: 'message.item.completed',
+        providerTurnId,
+        providerItemId: item.id,
+        phase: item.phase ?? null
       }
     })
   }
@@ -501,7 +542,9 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
       return
     }
 
-    agentSessionService.completeTurn(binding.sessionId, binding.localTurnId)
+    agentSessionService.completeTurn(binding.sessionId, binding.localTurnId, {
+      finalResponseFallback: true
+    })
   }
 
   private handleTurnDiffUpdated(

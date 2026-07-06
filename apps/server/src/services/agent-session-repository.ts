@@ -15,6 +15,7 @@ import type {
   AgentArtifactSource,
   AgentEvent,
   AgentMessage,
+  AgentMessagePhase,
   AgentMessageRole,
   AgentMessageStatus,
   AgentPendingRequest,
@@ -59,6 +60,8 @@ interface AgentTurnRow {
   requested_at: string
   completed_at: string | null
   error: string | null
+  final_response: string | null
+  final_message_id: string | null
 }
 
 interface AgentMessageRow {
@@ -68,6 +71,7 @@ interface AgentMessageRow {
   role: AgentMessageRole
   text: string
   status: AgentMessageStatus
+  phase: AgentMessagePhase | null
   provider_item_id: string | null
   created_at: string
   updated_at: string
@@ -167,6 +171,39 @@ export interface AppendAssistantMessageDeltaInput {
   rawSource?: string | null
   rawJson?: unknown
   canonicalJson?: unknown
+}
+
+export interface CompleteAssistantMessageItemInput {
+  sessionId: string
+  turnId: string
+  provider: AgentProvider
+  providerItemId: string
+  text: string
+  phase: AgentMessagePhase | null
+  rawSource?: string | null
+  rawJson?: unknown
+  canonicalJson?: unknown
+}
+
+export interface AssistantMessageItemProjection {
+  message: AgentMessage
+  detail: AgentSessionDetail
+}
+
+export interface CompleteTurnOptions {
+  /**
+   * Codex-SDK-compatible final-response fallback: when the turn has no
+   * explicit final_answer message, promote the last assistant message
+   * without a phase. Never promotes commentary. Codex-only semantics —
+   * other providers must not pass this.
+   */
+  finalResponseFallback?: boolean
+}
+
+export interface CompleteTurnProjection {
+  detail: AgentSessionDetail
+  /** Ids of assistant messages this call transitioned from streaming to completed. */
+  completedAssistantMessageIds: string[]
 }
 
 export interface CreatePendingRequestInput {
@@ -362,7 +399,9 @@ function mapTurn(row: AgentTurnRow): AgentTurn {
     status: row.status,
     requestedAt: row.requested_at,
     completedAt: row.completed_at,
-    error: row.error
+    error: row.error,
+    finalResponse: row.final_response,
+    finalMessageId: row.final_message_id
   }
 }
 
@@ -374,6 +413,7 @@ function mapMessage(row: AgentMessageRow): AgentMessage {
     role: row.role,
     text: row.text,
     status: row.status,
+    phase: row.phase,
     providerItemId: row.provider_item_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -686,7 +726,7 @@ export class AgentSessionRepository {
             created_at
           FROM agent_events
           WHERE session_id = ?
-            AND event_type NOT IN ('content.delta', 'stderr', 'diff.updated')
+            AND event_type NOT IN ('content.delta', 'stderr', 'diff.updated', 'message.item.completed')
           ORDER BY created_at ASC
         `
       )
@@ -1283,11 +1323,153 @@ export class AgentSessionRepository {
     }
   }
 
-  completeTurn(sessionId: string, turnId: string): AgentSessionDetail | null {
+  /**
+   * Upserts the authoritative completed assistant message for a provider
+   * transcript item: replaces any streamed text with the item's full text,
+   * records the provider phase, and (for final_answer) projects the turn
+   * final response. Also persists an audit event that stays out of the
+   * activity timeline.
+   */
+  completeAssistantMessageItem(input: CompleteAssistantMessageItemInput): AssistantMessageItemProjection {
+    const db = getDb()
     const timestamp = nowIso()
+    let messageId: string | null = null
 
-    getDb()
-      .prepare(
+    const completeTransaction = db.transaction(() => {
+      this.insertAgentEvent(
+        {
+          sessionId: input.sessionId,
+          turnId: input.turnId,
+          provider: input.provider,
+          eventType: 'message.item.completed',
+          streamKind: 'assistant_message',
+          rawSource: input.rawSource ?? null,
+          rawJson: input.rawJson,
+          canonicalJson:
+            input.canonicalJson ??
+            ({
+              type: 'message.item.completed',
+              providerItemId: input.providerItemId,
+              phase: input.phase
+            } satisfies Record<string, unknown>)
+        },
+        timestamp
+      )
+
+      const existing = this.findAssistantMessageForDelta({
+        sessionId: input.sessionId,
+        turnId: input.turnId,
+        providerItemId: input.providerItemId
+      })
+
+      if (existing) {
+        messageId = existing.id
+        db.prepare(
+          `
+            UPDATE agent_messages
+            SET text = ?,
+                phase = ?,
+                status = 'completed',
+                updated_at = ?
+            WHERE id = ?
+          `
+        ).run(input.text, input.phase, timestamp, existing.id)
+      } else {
+        messageId = createId('message')
+        db.prepare(
+          `
+            INSERT INTO agent_messages (
+              id,
+              session_id,
+              turn_id,
+              role,
+              text,
+              status,
+              phase,
+              provider_item_id,
+              created_at,
+              updated_at
+            )
+            VALUES (?, ?, ?, 'assistant', ?, 'completed', ?, ?, ?, ?)
+          `
+        ).run(
+          messageId,
+          input.sessionId,
+          input.turnId,
+          input.text,
+          input.phase,
+          input.providerItemId,
+          timestamp,
+          timestamp
+        )
+      }
+
+      if (input.phase === 'final_answer') {
+        db.prepare(
+          `
+            UPDATE agent_turns
+            SET final_response = ?,
+                final_message_id = ?
+            WHERE id = ?
+              AND session_id = ?
+          `
+        ).run(input.text, messageId, input.turnId, input.sessionId)
+      }
+
+      // Mirror the delta path: a completed item may be the first assistant
+      // text of the session (short replies emit no deltas), and it must
+      // activate a pending session the same way.
+      if (input.text.trim().length > 0) {
+        db.prepare(
+          `
+            UPDATE agent_sessions
+            SET activated_at = COALESCE(activated_at, ?),
+                status = CASE
+                  WHEN status = 'pending_activation' THEN 'running'
+                  ELSE status
+                END,
+                updated_at = ?
+            WHERE id = ?
+          `
+        ).run(timestamp, timestamp, input.sessionId)
+      }
+    })
+
+    completeTransaction()
+
+    const detail = this.findSessionDetail(input.sessionId)
+    const message = detail?.messages.find((entry) => entry.id === messageId) ?? null
+    if (!detail || !message) {
+      throw new Error(`Failed to project completed assistant item for session ${input.sessionId}.`)
+    }
+
+    return {
+      message,
+      detail
+    }
+  }
+
+  completeTurn(sessionId: string, turnId: string, options?: CompleteTurnOptions): CompleteTurnProjection | null {
+    const db = getDb()
+    const timestamp = nowIso()
+    let completedAssistantMessageIds: string[] = []
+
+    const completeTransaction = db.transaction(() => {
+      const streamingRows = db
+        .prepare(
+          `
+            SELECT id
+            FROM agent_messages
+            WHERE session_id = ?
+              AND turn_id = ?
+              AND role = 'assistant'
+              AND status = 'streaming'
+          `
+        )
+        .all(sessionId, turnId) as Array<{ id: string }>
+      completedAssistantMessageIds = streamingRows.map((row) => row.id)
+
+      db.prepare(
         `
           UPDATE agent_turns
           SET status = 'completed',
@@ -1295,11 +1477,9 @@ export class AgentSessionRepository {
           WHERE id = ?
             AND session_id = ?
         `
-      )
-      .run(timestamp, turnId, sessionId)
+      ).run(timestamp, turnId, sessionId)
 
-    getDb()
-      .prepare(
+      db.prepare(
         `
           UPDATE agent_messages
           SET status = 'completed',
@@ -1309,21 +1489,64 @@ export class AgentSessionRepository {
             AND role = 'assistant'
             AND status = 'streaming'
         `
-      )
-      .run(timestamp, sessionId, turnId)
+      ).run(timestamp, sessionId, turnId)
 
-    getDb()
-      .prepare(
+      db.prepare(
         `
           UPDATE agent_sessions
           SET status = 'ready',
               updated_at = ?
           WHERE id = ?
         `
-      )
-      .run(timestamp, sessionId)
+      ).run(timestamp, sessionId)
 
-    return this.findSessionDetail(sessionId)
+      if (options?.finalResponseFallback) {
+        // Codex-SDK-compatible legacy fallback: an explicit final_answer always
+        // wins; otherwise the last phase-less assistant message with real text
+        // becomes the final response. Commentary is never promoted. Selection
+        // happens in JS: SQLite trim() does not strip newlines, and rowid is
+        // the only reliable insertion-order tiebreaker for same-ms rows.
+        const candidates = db
+          .prepare(
+            `
+              SELECT id, text
+              FROM agent_messages
+              WHERE session_id = ?
+                AND turn_id = ?
+                AND role = 'assistant'
+                AND phase IS NULL
+              ORDER BY created_at DESC, rowid DESC
+            `
+          )
+          .all(sessionId, turnId) as Array<{ id: string; text: string }>
+        const fallback = candidates.find((candidate) => candidate.text.trim().length > 0)
+
+        if (fallback) {
+          db.prepare(
+            `
+              UPDATE agent_turns
+              SET final_response = ?,
+                  final_message_id = ?
+              WHERE id = ?
+                AND session_id = ?
+                AND final_response IS NULL
+            `
+          ).run(fallback.text, fallback.id, turnId, sessionId)
+        }
+      }
+    })
+
+    completeTransaction()
+
+    const detail = this.findSessionDetail(sessionId)
+    if (!detail) {
+      return null
+    }
+
+    return {
+      detail,
+      completedAssistantMessageIds
+    }
   }
 
   failTurn(sessionId: string, turnId: string, error: string): AgentSessionDetail | null {

@@ -121,23 +121,27 @@ function AgentMessageRow({
 }: {
   item: Extract<AgentTimelineItem, { type: 'message' }>
 }) {
+  const { message } = item
+  const isAssistant = message.role === 'assistant'
+  const phaseClass = message.phase ? ` message-phase-${message.phase}` : ''
+  const time = formatTimeOfDay(message.createdAt)
   return (
-    <article className={`timeline-row message-row message-${item.message.role}`}>
+    <article className={`timeline-row message-row message-${message.role}${phaseClass}`}>
       <div className="message-body">
-        <div className="message-meta">
-          <span className="message-role">
-            {item.message.role === 'assistant' ? 'Assistant' : 'You'}
-          </span>
-          <span className="message-time">{formatTimeOfDay(item.message.createdAt)}</span>
-        </div>
-        {item.message.role === 'assistant' ? (
+        <span className="sr-only">{isAssistant ? 'Assistant:' : 'You:'}</span>
+        {isAssistant ? (
           <div className="message-markdown">
-            <ReactMarkdown>{item.message.text}</ReactMarkdown>
+            <ReactMarkdown>{message.text}</ReactMarkdown>
           </div>
         ) : (
-          <p>{item.message.text}</p>
+          <p>{message.text}</p>
         )}
       </div>
+      {time ? (
+        <span className="message-time" aria-hidden="true">
+          {time}
+        </span>
+      ) : null}
     </article>
   )
 }
