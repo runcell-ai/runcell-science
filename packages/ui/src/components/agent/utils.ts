@@ -63,6 +63,24 @@ export function displaySessionTitle(
   return session.title?.trim() || `${providerLabel(session.provider)} session`
 }
 
+/**
+ * The trailing folder name of a working directory, used as its human label
+ * (e.g. `/Users/ada/code/open-science` -> `open-science`). Falls back to the
+ * raw value when no separator is present. Handles both POSIX and Windows
+ * separators and ignores trailing slashes.
+ */
+export function projectNameFromPath(path: string | null | undefined): string {
+  if (!path) {
+    return ''
+  }
+  const trimmed = path.trim().replace(/[\\/]+$/, '')
+  if (!trimmed) {
+    return ''
+  }
+  const segments = trimmed.split(/[\\/]+/).filter(Boolean)
+  return segments.length > 0 ? segments[segments.length - 1] : trimmed
+}
+
 export function formatTimeOfDay(iso: string): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) {

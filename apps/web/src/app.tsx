@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { AgentProvider } from '@runcell-science/contracts'
 import {
   AgentConversationHeader,
@@ -29,7 +29,14 @@ import { useSkills } from './hooks/use-skills'
 import { useWorkspace } from './hooks/use-workspace'
 import { api, apiBaseUrl } from './lib/api'
 import { fallbackModelOptions, mergeModelOptions } from './lib/models'
-import { persistCwd, persistModelChoice, readStoredCwd, readStoredModelChoice } from './lib/storage'
+import {
+  persistCwd,
+  persistModelChoice,
+  pushRecentCwd,
+  readRecentCwds,
+  readStoredCwd,
+  readStoredModelChoice
+} from './lib/storage'
 import { NotebookExecutionCard } from './notebook/execution-card'
 import './app.css'
 
@@ -41,6 +48,7 @@ function App() {
   const [model, setModel] = useState<string | null>(storedModelChoice?.model ?? null)
   const [modelOptions, setModelOptions] = useState(fallbackModelOptions)
   const [cwd, setCwd] = useState(readStoredCwd)
+  const [recentCwds, setRecentCwds] = useState(readRecentCwds)
   const [connectorsOpen, setConnectorsOpen] = useState(false)
   const [skillsOpen, setSkillsOpen] = useState(false)
 
@@ -74,6 +82,7 @@ function App() {
   const updateCwd = (value: string) => {
     setCwd(value)
     persistCwd(value)
+    setRecentCwds(pushRecentCwd(value))
   }
 
   const updateModelChoice = (choice: AgentModelChoice) => {
@@ -87,6 +96,23 @@ function App() {
   const selectedModel = workspace.detail ? workspace.detail.session.model : model
   const modelSelectorDisabled = !workspace.isDraft || workspace.isSending
   const activeCwd = workspace.detail?.session.cwd ?? (cwd.trim().length > 0 ? cwd : null)
+  // Known working directories offered in the draft picker: whatever the user
+  // has selected recently, plus the directories of existing sessions.
+  const projects = useMemo(() => {
+    const seen = new Set<string>()
+    const list: string[] = []
+    const add = (value: string | null | undefined) => {
+      const trimmed = value?.trim()
+      if (trimmed && !seen.has(trimmed)) {
+        seen.add(trimmed)
+        list.push(trimmed)
+      }
+    }
+    add(cwd)
+    recentCwds.forEach(add)
+    sessionList.sessions.forEach((session) => add(session.cwd))
+    return list
+  }, [cwd, recentCwds, sessionList.sessions])
   const composerSkills = useSkills({
     provider: activeProvider,
     cwd: activeCwd,
@@ -167,6 +193,7 @@ function App() {
                   isDraft={workspace.isDraft}
                   cwd={cwd}
                   activeCwd={workspace.detail?.session.cwd}
+                  projects={projects}
                   onCwdChange={updateCwd}
                 />
               ) : null}

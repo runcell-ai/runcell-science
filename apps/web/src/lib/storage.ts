@@ -2,8 +2,10 @@ import type { AgentProvider } from '@runcell-science/contracts'
 import type { AgentModelChoice } from '@runcell-science/ui'
 
 const cwdStorageKey = 'open-science.cwd'
+const recentCwdsStorageKey = 'open-science.recent-cwds'
 const modelChoiceStorageKey = 'open-science.model-choice'
 const envDefaultCwd = (import.meta.env.VITE_AGENT_DEFAULT_CWD as string | undefined) ?? ''
+const maxRecentCwds = 8
 
 export function readStoredCwd(): string {
   try {
@@ -19,6 +21,38 @@ export function persistCwd(value: string): void {
   } catch {
     return
   }
+}
+
+/** Recently used working directories, most recent first. */
+export function readRecentCwds(): string[] {
+  try {
+    const raw = window.localStorage.getItem(recentCwdsStorageKey)
+    if (!raw) {
+      return []
+    }
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) {
+      return []
+    }
+    return parsed.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+  } catch {
+    return []
+  }
+}
+
+/** Move `value` to the front of the recent list and return the updated list. */
+export function pushRecentCwd(value: string): string[] {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return readRecentCwds()
+  }
+  const next = [trimmed, ...readRecentCwds().filter((item) => item !== trimmed)].slice(0, maxRecentCwds)
+  try {
+    window.localStorage.setItem(recentCwdsStorageKey, JSON.stringify(next))
+  } catch {
+    return next
+  }
+  return next
 }
 
 export function readStoredModelChoice(): AgentModelChoice | null {

@@ -1,4 +1,4 @@
-import { CircleDot, FileDiff, PanelRightOpen, Square } from 'lucide-react'
+import { CircleDot, FileDiff, FolderOpen, PanelRightOpen, Square } from 'lucide-react'
 
 import { Button } from '../ui/button'
 import {
@@ -8,7 +8,7 @@ import {
 } from '../ui/tooltip'
 import type { AgentConnectionStatus } from './types'
 import { StatusPill } from './status-pill'
-import { statusLabel } from './utils'
+import { projectNameFromPath, statusLabel } from './utils'
 
 type AgentConversationHeaderProps = {
   title: string
@@ -56,7 +56,8 @@ function AgentConversationHeader({
           ) : null}
           {path ? (
             <span className="conversation-path" title={path}>
-              {path}
+              <FolderOpen className="conversation-path-icon" />
+              {projectNameFromPath(path)}
             </span>
           ) : null}
         </div>

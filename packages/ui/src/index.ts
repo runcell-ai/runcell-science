@@ -39,6 +39,7 @@ export {
   displaySessionTitle,
   formatRelativeTime,
   formatTimeOfDay,
+  projectNameFromPath,
   providerLabel,
   statusLabel
 } from './components/agent'

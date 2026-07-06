@@ -5,6 +5,7 @@ export {
   eventTitle,
   formatRelativeTime,
   formatTimeOfDay,
+  projectNameFromPath,
   providerLabel,
   statusLabel
 } from './utils'

@@ -432,7 +432,13 @@ function Gallery() {
                         selectedModel={selectedModel}
                         onChange={handleModelChoice}
                       />
-                      <AgentRuntimeConfig isDraft cwd={cwd} activeCwd={cwd} onCwdChange={setCwd} />
+                      <AgentRuntimeConfig
+                        isDraft
+                        cwd={cwd}
+                        activeCwd={cwd}
+                        projects={[cwd, '/Users/ada/code/open-science', '/Users/ada/notebooks/analysis']}
+                        onCwdChange={setCwd}
+                      />
                     </div>
                   </article>
                 </>
