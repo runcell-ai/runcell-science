@@ -89,7 +89,26 @@ export interface CaptureTurnCheckpointBaselineInput {
   turn: AgentTurn
 }
 
+export type CreateSessionArtifactInput = CreateAgentArtifactInput & {
+  /** Ask clients to focus/open the artifact even when it already exists. */
+  focus?: boolean
+}
+
+export interface WriteArtifactStateInput {
+  sessionId: string
+  artifactId: string
+  state: unknown
+}
+
+export interface ArtifactStateResult {
+  artifact: AgentArtifact
+  state: unknown
+  updatedAt: string | null
+}
+
 const defaultPendingActivationTtlMs = 24 * 60 * 60 * 1000
+/** Hard cap on serialized artifact state; it is meant for small UI state. */
+export const maxArtifactStateBytes = 64 * 1024
 const imageArtifactExtensions = new Set(['.apng', '.avif', '.bmp', '.gif', '.jpeg', '.jpg', '.png', '.svg', '.webp'])
 const markdownArtifactExtensions = new Set(['.markdown', '.md', '.mdown', '.mkd'])
 
@@ -142,6 +161,14 @@ function createEventId(): string {
   return `sse_${crypto.randomUUID()}`
 }
 
+function parseStateJson(stateJson: string): unknown {
+  try {
+    return JSON.parse(stateJson) as unknown
+  } catch {
+    return null
+  }
+}
+
 function nowIso(): string {
   return new Date().toISOString()
 }
@@ -161,7 +188,7 @@ export class AgentSessionService {
     return this.repository.findArtifact(artifactId)
   }
 
-  createArtifact(input: CreateAgentArtifactInput): AgentArtifact {
+  createArtifact(input: CreateSessionArtifactInput): AgentArtifact {
     const session = this.repository.findSession(input.sessionId)
     if (!session) {
       throw new AgentSessionServiceError('not_found', 'Session was not found.', 404)
@@ -178,9 +205,72 @@ export class AgentSessionService {
       sessionId: projection.artifact.sessionId,
       turnId: projection.artifact.turnId,
       createdAt: projection.artifact.updatedAt,
-      artifact: projection.artifact
+      artifact: projection.artifact,
+      ...(input.focus ? { focus: true } : {})
     })
     return projection.artifact
+  }
+
+  getArtifactState(sessionId: string, artifactId: string): ArtifactStateResult {
+    const artifact = this.requireSessionArtifact(sessionId, artifactId)
+    const state = this.repository.findArtifactState(sessionId, artifactId)
+    return {
+      artifact,
+      state: state ? parseStateJson(state.stateJson) : null,
+      updatedAt: state?.updatedAt ?? null
+    }
+  }
+
+  writeArtifactState(input: WriteArtifactStateInput): ArtifactStateResult {
+    this.requireSessionArtifact(input.sessionId, input.artifactId)
+
+    if (input.state === undefined) {
+      throw new AgentSessionServiceError('bad_request', 'state is required.', 400)
+    }
+
+    const stateJson = JSON.stringify(input.state)
+    if (typeof stateJson !== 'string') {
+      throw new AgentSessionServiceError('bad_request', 'state must be JSON-serializable.', 400)
+    }
+    if (Buffer.byteLength(stateJson, 'utf8') > maxArtifactStateBytes) {
+      throw new AgentSessionServiceError(
+        'bad_request',
+        `state must be at most ${maxArtifactStateBytes} bytes when serialized.`,
+        400
+      )
+    }
+
+    const projection = this.repository.upsertArtifactState({
+      sessionId: input.sessionId,
+      artifactId: input.artifactId,
+      stateJson
+    })
+
+    // upsertArtifactState bumps the artifact's updated_at, so the published
+    // artifact carries a fresh timestamp clients can key reloads on.
+    const artifact = this.requireSessionArtifact(input.sessionId, input.artifactId)
+    sessionEventBus.publish({
+      id: createEventId(),
+      type: 'artifact.updated',
+      sessionId: artifact.sessionId,
+      turnId: artifact.turnId,
+      createdAt: projection.updatedAt,
+      artifact
+    })
+
+    return {
+      artifact,
+      state: parseStateJson(projection.stateJson),
+      updatedAt: projection.updatedAt
+    }
+  }
+
+  private requireSessionArtifact(sessionId: string, artifactId: string): AgentArtifact {
+    const artifact = this.repository.findArtifact(artifactId)
+    if (!artifact || artifact.sessionId !== sessionId) {
+      throw new AgentSessionServiceError('not_found', 'Artifact was not found in this session.', 404)
+    }
+    return artifact
   }
 
   createPendingSessionForInitialMessage(input: CreateAgentSessionDraftInput): CreateAgentSessionResponse {

@@ -96,6 +96,18 @@ interface AgentArtifactRow {
   path: string | null
   url: string | null
   title: string | null
+  renderer_key: string | null
+  media_type: string | null
+  metadata_json: string | null
+  editable: number
+  created_at: string
+  updated_at: string
+}
+
+interface AgentArtifactStateRow {
+  artifact_id: string
+  session_id: string
+  state_json: string
   created_at: string
   updated_at: string
 }
@@ -171,8 +183,16 @@ export interface ResolvePendingRequestInput {
   responseJson: unknown
 }
 
+export interface AgentArtifactPresentationInput {
+  rendererKey?: string | null
+  mediaType?: string | null
+  /** Serialized JSON object; parsed back into AgentArtifact.metadata. */
+  metadataJson?: string | null
+  editable?: boolean | null
+}
+
 export type CreateAgentArtifactInput =
-  | {
+  | (AgentArtifactPresentationInput & {
       sessionId: string
       turnId?: string | null
       messageId?: string | null
@@ -180,8 +200,8 @@ export type CreateAgentArtifactInput =
       source: 'file'
       path: string
       title?: string | null
-    }
-  | {
+    })
+  | (AgentArtifactPresentationInput & {
       sessionId: string
       turnId?: string | null
       messageId?: string | null
@@ -189,7 +209,20 @@ export type CreateAgentArtifactInput =
       source: 'url'
       url: string
       title?: string | null
-    }
+    })
+
+export interface UpsertArtifactStateInput {
+  sessionId: string
+  artifactId: string
+  stateJson: string
+}
+
+export interface ArtifactStateProjection {
+  artifactId: string
+  sessionId: string
+  stateJson: string
+  updatedAt: string
+}
 
 export interface UpdateProviderBindingInput {
   sessionId: string
@@ -356,6 +389,20 @@ function mapPendingRequest(row: AgentPendingRequestRow): AgentPendingRequest {
   }
 }
 
+function parseMetadataJson(value: string | null): Record<string, unknown> | null {
+  if (!value) {
+    return null
+  }
+  try {
+    const parsed = JSON.parse(value) as unknown
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null
+  } catch {
+    return null
+  }
+}
+
 function mapArtifact(row: AgentArtifactRow): AgentArtifact {
   const base = {
     id: row.id,
@@ -363,6 +410,10 @@ function mapArtifact(row: AgentArtifactRow): AgentArtifact {
     turnId: row.turn_id,
     messageId: row.message_id,
     title: row.title,
+    rendererKey: row.renderer_key,
+    mediaType: row.media_type,
+    metadata: parseMetadataJson(row.metadata_json),
+    editable: row.editable === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   }
@@ -383,6 +434,15 @@ function mapArtifact(row: AgentArtifactRow): AgentArtifact {
     source: 'file',
     path: row.path ?? '',
     url: null
+  }
+}
+
+function mapArtifactState(row: AgentArtifactStateRow): ArtifactStateProjection {
+  return {
+    artifactId: row.artifact_id,
+    sessionId: row.session_id,
+    stateJson: row.state_json,
+    updatedAt: row.updated_at
   }
 }
 
@@ -736,11 +796,25 @@ export class AgentSessionRepository {
               turn_id = COALESCE(?, turn_id),
               message_id = COALESCE(?, message_id),
               title = COALESCE(?, title),
+              renderer_key = COALESCE(?, renderer_key),
+              media_type = COALESCE(?, media_type),
+              metadata_json = COALESCE(?, metadata_json),
+              editable = COALESCE(?, editable),
               updated_at = ?
             WHERE id = ?
           `
         )
-        .run(input.turnId ?? null, input.messageId ?? null, input.title ?? null, timestamp, existing.id)
+        .run(
+          input.turnId ?? null,
+          input.messageId ?? null,
+          input.title ?? null,
+          input.rendererKey ?? null,
+          input.mediaType ?? null,
+          input.metadataJson ?? null,
+          input.editable === undefined || input.editable === null ? null : input.editable ? 1 : 0,
+          timestamp,
+          existing.id
+        )
 
       const artifact = this.findArtifact(existing.id)
       if (!artifact) {
@@ -768,10 +842,14 @@ export class AgentSessionRepository {
             path,
             url,
             title,
+            renderer_key,
+            media_type,
+            metadata_json,
+            editable,
             created_at,
             updated_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `
       )
       .run(
@@ -784,6 +862,10 @@ export class AgentSessionRepository {
         input.source === 'file' ? input.path : null,
         input.source === 'url' ? input.url : null,
         input.title ?? null,
+        input.rendererKey ?? null,
+        input.mediaType ?? null,
+        input.metadataJson ?? null,
+        input.editable ? 1 : 0,
         timestamp,
         timestamp
       )
@@ -845,6 +927,64 @@ export class AgentSessionRepository {
       .get(sessionId, url) as AgentArtifactRow | undefined
 
     return row ? mapArtifact(row) : null
+  }
+
+  findArtifactState(sessionId: string, artifactId: string): ArtifactStateProjection | null {
+    const row = getDb()
+      .prepare(
+        `
+          SELECT *
+          FROM agent_artifact_state
+          WHERE session_id = ?
+            AND artifact_id = ?
+        `
+      )
+      .get(sessionId, artifactId) as AgentArtifactStateRow | undefined
+
+    return row ? mapArtifactState(row) : null
+  }
+
+  /** Writes artifact state and bumps the artifact's updated_at in the same
+   * transaction so existing artifact SSE plumbing signals the change. */
+  upsertArtifactState(input: UpsertArtifactStateInput): ArtifactStateProjection {
+    const db = getDb()
+    const timestamp = nowIso()
+
+    const upsertTransaction = db.transaction(() => {
+      db.prepare(
+        `
+          INSERT INTO agent_artifact_state (
+            artifact_id,
+            session_id,
+            state_json,
+            created_at,
+            updated_at
+          )
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(artifact_id) DO UPDATE SET
+            state_json = excluded.state_json,
+            updated_at = excluded.updated_at
+        `
+      ).run(input.artifactId, input.sessionId, input.stateJson, timestamp, timestamp)
+
+      db.prepare(
+        `
+          UPDATE agent_artifacts
+          SET updated_at = ?
+          WHERE id = ?
+            AND session_id = ?
+        `
+      ).run(timestamp, input.artifactId, input.sessionId)
+    })
+
+    upsertTransaction()
+
+    const state = this.findArtifactState(input.sessionId, input.artifactId)
+    if (!state) {
+      throw new Error(`Failed to load state for artifact ${input.artifactId}.`)
+    }
+
+    return state
   }
 
   updateTurnProviderId(input: UpdateProviderTurnInput): AgentTurn | null {

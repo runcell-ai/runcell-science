@@ -23,12 +23,19 @@ import ReactMarkdown from 'react-markdown'
 import type {
   AgentArtifact,
   AgentArtifactMarkdownContentResponse,
+  AgentArtifactStateResponse,
   ListWorkspaceFilesResponse,
   WorkspaceFile,
   WorkspaceFileKind
 } from '@open-science/contracts'
 import { Button, Input, ScrollArea } from '@open-science/ui'
 import { CodePreview } from './code-preview'
+import {
+  builtinRendererKeys,
+  registerArtifactRenderer,
+  resolveArtifactRenderer,
+  type ArtifactRendererProps
+} from './lib/artifact-renderers'
 
 const NotebookViewer = lazy(() => import('./notebook/notebook-viewer'))
 
@@ -67,9 +74,12 @@ type PreviewModel = {
   title: string
   subtitle: string
   icon: ReactNode
-  render: 'image' | 'markdown' | 'text' | 'notebook' | 'embed' | 'none'
+  /** 'artifact' resolves a component from the artifact renderer registry;
+   * the other values are the workspace-file preview modes. */
+  render: 'artifact' | 'image' | 'markdown' | 'text' | 'notebook' | 'embed' | 'none'
   src: string | null
   external: string | null
+  artifact?: AgentArtifact
   filePath?: string
   fetchText?: () => Promise<string>
 }
@@ -276,37 +286,142 @@ async function readError(response: Response): Promise<string> {
   return response.statusText
 }
 
+/** Artifact previews resolve through the renderer registry; the model only
+ * carries the artifact plus its source URL and text-content helper. */
 function modelForArtifact(apiBaseUrl: string, artifact: AgentArtifact): PreviewModel {
   const title = artifact.title ?? baseName(artifact.path ?? artifact.url ?? 'Artifact')
   const subtitle = artifact.source === 'url' ? artifact.url : artifact.path
   const icon = iconForFileName(subtitle, artifactKindTag(artifact))
-  const base = { key: `artifact:${artifact.id}`, title, subtitle, icon }
+  const src = artifact.source === 'url' ? artifact.url : artifactAssetUrl(apiBaseUrl, artifact.id)
 
-  if (artifact.kind === 'url') {
-    return { ...base, render: 'embed', src: artifact.url, external: artifact.url }
-  }
-
-  const asset = artifactAssetUrl(apiBaseUrl, artifact.id)
-  if (artifact.kind === 'image') {
-    return { ...base, render: 'image', src: asset, external: asset }
-  }
-  if (artifact.kind === 'markdown') {
-    return {
-      ...base,
-      render: 'markdown',
-      src: asset,
-      external: asset,
-      fetchText: async () => {
-        const response = await fetch(`${apiBaseUrl}/api/artifacts/${encodeURIComponent(artifact.id)}/content`)
-        if (!response.ok) {
-          throw new Error(await readError(response))
+  const fetchText =
+    artifact.kind === 'markdown'
+      ? async () => {
+          const response = await fetch(`${apiBaseUrl}/api/artifacts/${encodeURIComponent(artifact.id)}/content`)
+          if (!response.ok) {
+            throw new Error(await readError(response))
+          }
+          const body = (await response.json()) as AgentArtifactMarkdownContentResponse
+          return body.content
         }
-        const body = (await response.json()) as AgentArtifactMarkdownContentResponse
-        return body.content
-      }
-    }
+      : undefined
+
+  return {
+    key: `artifact:${artifact.id}`,
+    title,
+    subtitle,
+    icon,
+    render: 'artifact',
+    src,
+    external: src,
+    artifact,
+    fetchText
   }
-  return { ...base, render: 'embed', src: asset, external: asset }
+}
+
+function ImageArtifactRenderer({ artifact, src }: ArtifactRendererProps) {
+  if (!src) {
+    return <div className="side-panel-empty">This artifact has no content to preview.</div>
+  }
+  return (
+    <div className="preview-image-frame">
+      <img src={src} alt={artifact.title ?? 'Artifact'} />
+    </div>
+  )
+}
+
+function EmbedArtifactRenderer({ artifact, src }: ArtifactRendererProps) {
+  if (!src) {
+    return <div className="side-panel-empty">This artifact has no content to preview.</div>
+  }
+  return (
+    <iframe
+      className="preview-embed-frame"
+      src={src}
+      title={artifact.title ?? 'Artifact'}
+      sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
+    />
+  )
+}
+
+function MarkdownArtifactRenderer({ artifact, reloadNonce, fetchText }: ArtifactRendererProps) {
+  const [textState, setTextState] = useState<TextState>({ status: 'loading' })
+
+  useEffect(() => {
+    if (!fetchText) {
+      setTextState({ status: 'error', message: 'This artifact does not expose text content.' })
+      return
+    }
+    const controller = new AbortController()
+    fetchText()
+      .then((content) => {
+        if (!controller.signal.aborted) {
+          setTextState({ status: 'ready', content })
+        }
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          // Keep showing the previous content when a background reload fails.
+          setTextState((current) =>
+            current.status === 'ready'
+              ? current
+              : { status: 'error', message: error instanceof Error ? error.message : String(error) }
+          )
+        }
+      })
+    return () => controller.abort()
+  }, [fetchText, reloadNonce, artifact.updatedAt])
+
+  if (textState.status === 'loading') {
+    return (
+      <div className="side-panel-loading">
+        <Loader2 className="spin-icon" />
+        Loading
+      </div>
+    )
+  }
+  if (textState.status === 'error') {
+    return <div className="side-panel-empty">{textState.message}</div>
+  }
+  return (
+    <div className="artifact-markdown-frame">
+      <article className="artifact-markdown">
+        <ReactMarkdown>{textState.content}</ReactMarkdown>
+      </article>
+    </div>
+  )
+}
+
+registerArtifactRenderer(builtinRendererKeys.image, ImageArtifactRenderer)
+registerArtifactRenderer(builtinRendererKeys.embed, EmbedArtifactRenderer)
+registerArtifactRenderer(builtinRendererKeys.markdown, MarkdownArtifactRenderer)
+
+/** Fallback for artifacts declaring a renderer key this build does not know. */
+function UnsupportedInteractiveArtifact({
+  artifact,
+  rendererKey,
+  external
+}: {
+  artifact: AgentArtifact
+  rendererKey: string
+  external: string | null
+}) {
+  return (
+    <div className="side-panel-empty">
+      <span>
+        This artifact requires the “{rendererKey}” renderer, which isn’t available here.
+        {artifact.mediaType ? ` (${artifact.mediaType})` : ''}
+      </span>
+      {external ? (
+        <Button type="button" variant="outline" size="sm" asChild>
+          <a href={external} target="_blank" rel="noreferrer">
+            <ExternalLink />
+            Open externally
+          </a>
+        </Button>
+      ) : null}
+    </div>
+  )
 }
 
 function modelForFile(apiBaseUrl: string, sessionId: string, file: WorkspaceFile): PreviewModel {
@@ -386,7 +501,46 @@ function PreviewSurface({
     }
   }, [])
 
-  const fetchText = model.fetchText
+  const artifactId = model.render === 'artifact' ? model.artifact?.id ?? null : null
+  const artifactStateUrl =
+    artifactId === null
+      ? null
+      : `${apiBaseUrl}/api/sessions/${encodeURIComponent(sessionId)}/artifacts/${encodeURIComponent(artifactId)}/state`
+
+  const readState = useCallback(async (): Promise<unknown> => {
+    if (!artifactStateUrl) {
+      return null
+    }
+    const response = await fetch(artifactStateUrl)
+    if (!response.ok) {
+      throw new Error(await readError(response))
+    }
+    const body = (await response.json()) as AgentArtifactStateResponse
+    return body.state
+  }, [artifactStateUrl])
+
+  const saveState = useCallback(
+    async (state: unknown): Promise<unknown> => {
+      if (!artifactStateUrl) {
+        return null
+      }
+      const response = await fetch(artifactStateUrl, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ state })
+      })
+      if (!response.ok) {
+        throw new Error(await readError(response))
+      }
+      const body = (await response.json()) as AgentArtifactStateResponse
+      return body.state
+    },
+    [artifactStateUrl]
+  )
+
+  // Artifact previews own their content fetching (via renderer props), so the
+  // workspace-file text machinery below must not fetch for them.
+  const fetchText = model.render === 'artifact' ? undefined : model.fetchText
   // reloadNonce is bumped when an agent turn ends so text-based previews
   // (notebooks especially) pick up files the agent just modified.
   useEffect(() => {
@@ -422,6 +576,29 @@ function PreviewSurface({
       })
     return () => controller.abort()
   }, [fetchText, model.key, effectiveReloadNonce, manualReloadNonce])
+
+  if (model.render === 'artifact' && model.artifact) {
+    const artifact = model.artifact
+    const resolution = resolveArtifactRenderer(artifact)
+    if (!resolution.supported) {
+      return (
+        <UnsupportedInteractiveArtifact artifact={artifact} rendererKey={resolution.key} external={model.external} />
+      )
+    }
+    const Renderer = resolution.Renderer
+    return (
+      <Renderer
+        key={model.key}
+        artifact={artifact}
+        src={model.src}
+        metadata={artifact.metadata ?? null}
+        reloadNonce={effectiveReloadNonce}
+        fetchText={model.fetchText}
+        readState={readState}
+        saveState={artifact.editable ? saveState : undefined}
+      />
+    )
+  }
 
   if (model.render === 'image' && model.src) {
     return (

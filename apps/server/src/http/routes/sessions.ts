@@ -6,9 +6,11 @@ import type {
   AgentArtifact,
   AgentArtifactKind,
   AgentArtifactMarkdownContentResponse,
+  AgentArtifactStateResponse,
   AgentProvider,
   AgentRuntimeMode,
   ApiErrorResponse,
+  PutAgentArtifactStateRequest,
   AgentSessionWorktreeDiffResponse,
   AgentSessionWorktreeDiffStatusResponse,
   CreateAgentArtifactRequest,
@@ -368,12 +370,91 @@ function parseResolveRequest(body: unknown): ResolveAgentRequestRequest | ApiErr
   }
 }
 
+/** Renderer keys are stable identifiers, not display text: short and simple. */
+const rendererKeyPattern = /^[a-z0-9][a-z0-9:._-]{0,63}$/i
+const mediaTypePattern = /^[\w.+-]+\/[\w.+-]+$/
+/** Cap on serialized artifact metadata; it describes rendering, not data. */
+const maxArtifactMetadataBytes = 16 * 1024
+
+type ArtifactPresentationFields = {
+  rendererKey?: string | null
+  mediaType?: string | null
+  metadata?: Record<string, unknown> | null
+  editable?: boolean
+  focus?: boolean
+}
+
+function parseArtifactPresentationFields(
+  body: Record<string, unknown>
+): ArtifactPresentationFields | ApiErrorResponse['error'] {
+  if (body.rendererKey !== undefined && body.rendererKey !== null) {
+    if (typeof body.rendererKey !== 'string' || !rendererKeyPattern.test(body.rendererKey)) {
+      return {
+        code: 'bad_request',
+        message: 'rendererKey must be a short identifier (letters, digits, ":", ".", "_", "-").'
+      }
+    }
+  }
+
+  if (body.mediaType !== undefined && body.mediaType !== null) {
+    if (typeof body.mediaType !== 'string' || body.mediaType.length > 128 || !mediaTypePattern.test(body.mediaType)) {
+      return {
+        code: 'bad_request',
+        message: 'mediaType must be a valid media type such as "application/json".'
+      }
+    }
+  }
+
+  if (body.metadata !== undefined && body.metadata !== null) {
+    if (!isRecord(body.metadata)) {
+      return {
+        code: 'bad_request',
+        message: 'metadata must be a JSON object when provided.'
+      }
+    }
+    if (Buffer.byteLength(JSON.stringify(body.metadata), 'utf8') > maxArtifactMetadataBytes) {
+      return {
+        code: 'bad_request',
+        message: `metadata must be at most ${maxArtifactMetadataBytes} bytes when serialized.`
+      }
+    }
+  }
+
+  if (body.editable !== undefined && typeof body.editable !== 'boolean') {
+    return {
+      code: 'bad_request',
+      message: 'editable must be a boolean when provided.'
+    }
+  }
+
+  if (body.focus !== undefined && typeof body.focus !== 'boolean') {
+    return {
+      code: 'bad_request',
+      message: 'focus must be a boolean when provided.'
+    }
+  }
+
+  return {
+    rendererKey: typeof body.rendererKey === 'string' ? body.rendererKey : null,
+    mediaType: typeof body.mediaType === 'string' ? body.mediaType : null,
+    metadata: isRecord(body.metadata) ? (body.metadata as Record<string, unknown>) : null,
+    // Absent means "leave as-is" on updates, so it must not collapse to false.
+    editable: typeof body.editable === 'boolean' ? body.editable : undefined,
+    focus: body.focus === true
+  }
+}
+
 function parseCreateArtifactRequest(body: unknown): CreateAgentArtifactRequest | ApiErrorResponse['error'] {
   if (!isRecord(body)) {
     return {
       code: 'bad_request',
       message: 'Request body must be a JSON object.'
     }
+  }
+
+  const presentation = parseArtifactPresentationFields(body)
+  if ('code' in presentation) {
+    return presentation
   }
 
   if (isNonEmptyString(body.url)) {
@@ -400,7 +481,8 @@ function parseCreateArtifactRequest(body: unknown): CreateAgentArtifactRequest |
       url: body.url.trim(),
       title: typeof body.title === 'string' ? body.title : null,
       turnId: typeof body.turnId === 'string' ? body.turnId : null,
-      messageId: typeof body.messageId === 'string' ? body.messageId : null
+      messageId: typeof body.messageId === 'string' ? body.messageId : null,
+      ...presentation
     }
   }
 
@@ -423,7 +505,8 @@ function parseCreateArtifactRequest(body: unknown): CreateAgentArtifactRequest |
     path: body.path.trim(),
     title: typeof body.title === 'string' ? body.title : null,
     turnId: typeof body.turnId === 'string' ? body.turnId : null,
-    messageId: typeof body.messageId === 'string' ? body.messageId : null
+    messageId: typeof body.messageId === 'string' ? body.messageId : null,
+    ...presentation
   }
 }
 
@@ -512,6 +595,14 @@ export const sessionsRoute: FastifyPluginAsync = async (server) => {
     }
 
     try {
+      const presentation = {
+        rendererKey: parsed.rendererKey ?? null,
+        mediaType: parsed.mediaType ?? null,
+        metadataJson: parsed.metadata ? JSON.stringify(parsed.metadata) : null,
+        editable: parsed.editable,
+        focus: parsed.focus ?? false
+      }
+
       if ('url' in parsed) {
         const artifact = agentSessionService.createArtifact({
           sessionId: params.sessionId,
@@ -520,7 +611,8 @@ export const sessionsRoute: FastifyPluginAsync = async (server) => {
           kind: 'url',
           source: 'url',
           url: parsed.url,
-          title: parsed.title ?? parsed.url
+          title: parsed.title ?? parsed.url,
+          ...presentation
         })
         return reply.code(201).send({ artifact } satisfies CreateAgentArtifactResponse)
       }
@@ -542,9 +634,47 @@ export const sessionsRoute: FastifyPluginAsync = async (server) => {
         kind,
         source: 'file',
         path: normalizedPath,
-        title: parsed.title ?? path.basename(normalizedPath)
+        title: parsed.title ?? path.basename(normalizedPath),
+        ...presentation
       })
       return reply.code(201).send({ artifact } satisfies CreateAgentArtifactResponse)
+    } catch (error) {
+      return sendServiceError(reply, error)
+    }
+  })
+
+  server.get('/api/sessions/:sessionId/artifacts/:artifactId/state', async (request, reply) => {
+    const params = request.params as { sessionId?: string; artifactId?: string }
+    if (!isNonEmptyString(params.sessionId) || !isNonEmptyString(params.artifactId)) {
+      return sendBadRequest(reply, 'sessionId and artifactId are required.')
+    }
+
+    try {
+      const result = agentSessionService.getArtifactState(params.sessionId, params.artifactId)
+      return reply.send(result satisfies AgentArtifactStateResponse)
+    } catch (error) {
+      return sendServiceError(reply, error)
+    }
+  })
+
+  server.put('/api/sessions/:sessionId/artifacts/:artifactId/state', async (request, reply) => {
+    const params = request.params as { sessionId?: string; artifactId?: string }
+    if (!isNonEmptyString(params.sessionId) || !isNonEmptyString(params.artifactId)) {
+      return sendBadRequest(reply, 'sessionId and artifactId are required.')
+    }
+
+    const body = request.body
+    if (!isRecord(body) || !('state' in body) || body.state === undefined) {
+      return sendBadRequest(reply, 'Request body must be a JSON object with a "state" field.')
+    }
+
+    try {
+      const result = agentSessionService.writeArtifactState({
+        sessionId: params.sessionId,
+        artifactId: params.artifactId,
+        state: (body as unknown as PutAgentArtifactStateRequest).state
+      })
+      return reply.send(result satisfies AgentArtifactStateResponse)
     } catch (error) {
       return sendServiceError(reply, error)
     }

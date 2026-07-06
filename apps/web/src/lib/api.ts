@@ -1,4 +1,5 @@
 import type {
+  AgentArtifactStateResponse,
   AgentSessionDetail,
   AgentSessionWorktreeDiffResponse,
   AgentSessionWorktreeDiffStatusResponse,
@@ -77,6 +78,20 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input)
     }),
+
+  getArtifactState: (sessionId: string, artifactId: string) =>
+    requestJson<AgentArtifactStateResponse>(
+      `/api/sessions/${sessionId}/artifacts/${encodeURIComponent(artifactId)}/state`
+    ),
+
+  putArtifactState: (sessionId: string, artifactId: string, state: unknown) =>
+    requestJson<AgentArtifactStateResponse>(
+      `/api/sessions/${sessionId}/artifacts/${encodeURIComponent(artifactId)}/state`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ state })
+      }
+    ),
 
   interruptSession: (sessionId: string) =>
     requestJson<InterruptAgentSessionResponse>(`/api/sessions/${sessionId}/interrupt`, {
