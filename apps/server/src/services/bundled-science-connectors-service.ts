@@ -43,11 +43,20 @@ function connectorCliPath(): string {
   return path.join(config.workspaceRoot, 'packages/science-connectors/dist/cli.js')
 }
 
-function toMcpConfig(name: string): McpServerConfigInput {
+function connectorEnv(sessionId?: string): Record<string, string> {
+  return {
+    OPEN_SCIENCE_API_URL: `http://127.0.0.1:${config.port}`,
+    OPEN_SCIENCE_NBCLI: path.join(config.workspaceRoot, 'packages/nbcli/nbcli.mjs'),
+    ...(sessionId ? { OPEN_SCIENCE_SESSION_ID: sessionId } : {})
+  }
+}
+
+function toMcpConfig(name: string, sessionId?: string): McpServerConfigInput {
   return {
     type: 'stdio',
     command: 'node',
-    args: [connectorCliPath(), 'connector', name]
+    args: [connectorCliPath(), 'connector', name],
+    env: connectorEnv(sessionId)
   }
 }
 
@@ -95,14 +104,18 @@ export class BundledScienceConnectorsService {
       .run(connector.name, normalizedCwd(input.cwd), input.enabled ? 1 : 0, timestamp, timestamp)
   }
 
-  getEnabledMcpConfigs(cwd: string, disabledServers: string[] = []): Record<string, McpServerConfigInput> {
+  getEnabledMcpConfigs(
+    cwd: string,
+    disabledServers: string[] = [],
+    sessionId?: string
+  ): Record<string, McpServerConfigInput> {
     const overrides = enablementOverridesForCwd(cwd)
     const disabled = new Set(disabledServers)
     const configs: Record<string, McpServerConfigInput> = {}
     for (const connector of bundledScienceConnectors) {
       const enabled = overrides.get(connector.name) ?? connector.defaultEnabled === true
       if (enabled && !disabled.has(connector.name)) {
-        configs[connector.name] = toMcpConfig(connector.name)
+        configs[connector.name] = toMcpConfig(connector.name, sessionId)
       }
     }
     return configs

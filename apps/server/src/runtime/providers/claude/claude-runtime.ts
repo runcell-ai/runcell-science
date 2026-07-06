@@ -148,7 +148,7 @@ export class ClaudeRuntime implements CodeAgentProviderRuntime {
         CLAUDE_AGENT_SDK_CLIENT_APP: 'open-science/0.1.0',
         ...(config.claudeConfigDir ? { CLAUDE_CONFIG_DIR: config.claudeConfigDir } : {})
       },
-      ...buildSessionMcpOverride(inputOptions.disabledMcpServers, inputOptions.cwd)
+      ...buildSessionMcpOverride(activeTurn.sessionId, inputOptions.disabledMcpServers, inputOptions.cwd)
     }
 
     for await (const message of query({ prompt, options: sdkOptions })) {
@@ -337,10 +337,11 @@ export class ClaudeRuntime implements CodeAgentProviderRuntime {
  * nothing and the native config (including claude.ai connectors) applies.
  */
 function buildSessionMcpOverride(
+  sessionId: string,
   disabledMcpServers: string[] | undefined,
   cwd: string | undefined
 ): Pick<Options, 'mcpServers' | 'strictMcpConfig'> {
-  const bundled = cwd ? bundledScienceConnectorsService.getEnabledMcpConfigs(cwd, disabledMcpServers ?? []) : {}
+  const bundled = cwd ? bundledScienceConnectorsService.getEnabledMcpConfigs(cwd, disabledMcpServers ?? [], sessionId) : {}
   if (Object.keys(bundled).length === 0 && (!disabledMcpServers || disabledMcpServers.length === 0)) {
     return {}
   }

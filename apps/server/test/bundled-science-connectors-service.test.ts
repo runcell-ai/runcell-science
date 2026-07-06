@@ -43,13 +43,17 @@ test('bundled science connector enablement is project scoped and produces MCP co
   assert.equal(enabled.connectors.find((connector) => connector.name === connectorName)?.enabled, true)
   assert.equal(other.connectors.find((connector) => connector.name === connectorName)?.enabled, false)
 
-  const configs = bundledScienceConnectorsService.getEnabledMcpConfigs(cwd)
+  const sessionId = 'session-test-ketcher'
+  const configs = bundledScienceConnectorsService.getEnabledMcpConfigs(cwd, [], sessionId)
   const config = configs[connectorName]
   assert.equal(config?.type, 'stdio')
   assert.equal(config?.command, 'node')
   assert.ok(config?.args?.[0]?.endsWith('packages/science-connectors/dist/cli.js'))
   assert.deepEqual(config?.args?.slice(1), ['connector', connectorName])
   assert.equal(configs['ketcher-chemistry']?.type, 'stdio')
+  assert.equal(configs['ketcher-chemistry']?.env?.OPEN_SCIENCE_SESSION_ID, sessionId)
+  assert.match(configs['ketcher-chemistry']?.env?.OPEN_SCIENCE_API_URL ?? '', /^http:\/\/127\.0\.0\.1:\d+$/)
+  assert.ok(configs['ketcher-chemistry']?.env?.OPEN_SCIENCE_NBCLI?.endsWith('packages/nbcli/nbcli.mjs'))
 
   const disabledForSession = bundledScienceConnectorsService.getEnabledMcpConfigs(cwd, [connectorName])
   assert.equal(disabledForSession[connectorName], undefined)

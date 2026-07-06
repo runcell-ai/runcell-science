@@ -95,13 +95,20 @@ function codexConfigValue(value: unknown): string {
 
 function buildBundledMcpOverrides(session: AgentSession): string[] {
   const args: string[] = []
-  const bundled = bundledScienceConnectorsService.getEnabledMcpConfigs(session.cwd, session.disabledMcpServers)
+  const bundled = bundledScienceConnectorsService.getEnabledMcpConfigs(
+    session.cwd,
+    session.disabledMcpServers,
+    session.id
+  )
   for (const [name, entry] of Object.entries(bundled)) {
     if (!MCP_OVERRIDE_NAME_PATTERN.test(name) || entry.type !== 'stdio' || !entry.command) {
       continue
     }
     args.push('-c', `mcp_servers.${name}.command=${codexConfigValue(entry.command)}`)
     args.push('-c', `mcp_servers.${name}.args=${codexConfigValue(entry.args ?? [])}`)
+    if (entry.env && Object.keys(entry.env).length > 0) {
+      args.push('-c', `mcp_servers.${name}.env=${codexConfigValue(entry.env)}`)
+    }
     args.push('-c', `mcp_servers.${name}.enabled=true`)
   }
   return args
