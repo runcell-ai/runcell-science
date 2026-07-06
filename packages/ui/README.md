@@ -1,6 +1,6 @@
-# @open-science/ui
+# @runcell-science/ui
 
-Private UI package for Open Science. It implements **Manuscript**, the project's design language.
+Private UI package for Runcell Science. It implements **Manuscript**, the project's design language.
 
 ## Manuscript design language
 
@@ -30,7 +30,7 @@ Never hardcode colors in component CSS — use the tokens so both themes hold.
 
 - Owns reusable UI primitives, interaction-only component logic, and design tokens.
 - Excludes app-specific data fetching, runtime state, API calls, and product workflows.
-- Exposes components through `@open-science/ui` and shared styles through `@open-science/ui/styles.css`.
+- Exposes components through `@runcell-science/ui` and shared styles through `@runcell-science/ui/styles.css`.
 
 ## Commands
 

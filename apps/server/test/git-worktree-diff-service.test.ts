@@ -28,7 +28,7 @@ test('worktree diff includes tracked and untracked changes in a git repository',
   try {
     await git(cwd, ['init'])
     await git(cwd, ['config', 'user.email', 'test@example.com'])
-    await git(cwd, ['config', 'user.name', 'Open Science Test'])
+    await git(cwd, ['config', 'user.name', 'Runcell Science Test'])
     await mkdir(path.join(cwd, 'src'))
     await writeFile(path.join(cwd, 'src', 'tracked.txt'), 'before\n')
     await git(cwd, ['add', '.'])

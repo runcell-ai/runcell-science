@@ -27,7 +27,7 @@ import type {
   ResolveAgentRequestRequest,
   ResolveAgentRequestResponse,
   RuntimeSseEvent
-} from '@open-science/contracts'
+} from '@runcell-science/contracts'
 
 import { RuntimeProviderError, runtimeRegistry, sessionEventBus } from '../../runtime'
 import { AgentSessionServiceError, agentSessionService } from '../../services'

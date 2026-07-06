@@ -10,7 +10,7 @@ import type {
   JupyterRuntimeStatus,
   JupyterServerConnectionResponse,
   JupyterServerStatusResponse
-} from '@open-science/contracts'
+} from '@runcell-science/contracts'
 
 import { config } from '../config/env'
 

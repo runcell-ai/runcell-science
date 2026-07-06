@@ -1,4 +1,4 @@
-import type { AgentMessage } from '@open-science/contracts'
+import type { AgentMessage } from '@runcell-science/contracts'
 import {
   AlertTriangle,
   Bot,

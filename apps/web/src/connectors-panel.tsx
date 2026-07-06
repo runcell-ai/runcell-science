@@ -5,7 +5,7 @@ import type {
   ListBundledScienceConnectorsResponse,
   ListMcpServersResponse,
   McpServerView
-} from '@open-science/contracts'
+} from '@runcell-science/contracts'
 import {
   Button,
   ScrollArea,
@@ -15,7 +15,7 @@ import {
   SheetHeader,
   SheetTitle,
   Textarea
-} from '@open-science/ui'
+} from '@runcell-science/ui'
 import { api, toErrorMessage } from './lib/api'
 
 type ConnectorsPanelProps = {
@@ -223,7 +223,7 @@ export function ConnectorsPanel({ open, cwd, onOpenChange }: ConnectorsPanelProp
         ))}
 
         <ScrollArea className="connectors-list">
-          <div className="connectors-section-label">Open Science science connectors</div>
+          <div className="connectors-section-label">Runcell Science science connectors</div>
           {bundledData && bundledData.connectors.length === 0 && !loading ? (
             <p className="connectors-empty">Open a project to enable bundled science connectors.</p>
           ) : null}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AgentProvider, BundledScienceConnectorView, McpServerView } from '@open-science/contracts'
-import { Button } from '@open-science/ui'
+import type { AgentProvider, BundledScienceConnectorView, McpServerView } from '@runcell-science/contracts'
+import { Button } from '@runcell-science/ui'
 import { api, toErrorMessage } from './lib/api'
 
 type SessionConnectorsMenuProps = {

@@ -28,8 +28,8 @@ import type {
   ListWorkspaceFilesResponse,
   WorkspaceFile,
   WorkspaceFileKind
-} from '@open-science/contracts'
-import { Button, Input, ScrollArea } from '@open-science/ui'
+} from '@runcell-science/contracts'
+import { Button, Input, ScrollArea } from '@runcell-science/ui'
 import { CodePreview } from './code-preview'
 import {
   builtinRendererKeys,

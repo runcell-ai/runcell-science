@@ -22,7 +22,7 @@ test('safe turn checkpoints diff snapshots without writing refs into the target 
   try {
     git(cwd, ['init'])
     git(cwd, ['config', 'user.email', 'test@example.com'])
-    git(cwd, ['config', 'user.name', 'Open Science Test'])
+    git(cwd, ['config', 'user.name', 'Runcell Science Test'])
     mkdirSync(path.join(cwd, 'src'))
     writeFileSync(path.join(cwd, 'src', 'sample.txt'), 'before\n')
     git(cwd, ['add', '.'])

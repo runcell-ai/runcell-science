@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { AgentProvider, SkillView } from '@open-science/contracts'
+import type { AgentProvider, SkillView } from '@runcell-science/contracts'
 import { api } from '../lib/api'
 
 export function useSkills(input: { provider: AgentProvider; cwd: string | null; sessionId: string | null }) {

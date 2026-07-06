@@ -14,7 +14,7 @@ import type {
   McpServerToolSummary,
   McpServerView,
   McpTransport
-} from '@open-science/contracts'
+} from '@runcell-science/contracts'
 
 import { config } from '../config/env'
 import { sanitizedProcessEnv } from '../runtime/env-utils'
@@ -354,7 +354,7 @@ export class McpManagementService {
       await client.request(
         'initialize',
         {
-          clientInfo: { name: 'open_science_mcp_admin', title: 'Open Science', version: '0.1.0' },
+          clientInfo: { name: 'open_science_mcp_admin', title: 'Runcell Science', version: '0.1.0' },
           capabilities: { experimentalApi: true }
         },
         INIT_TIMEOUT_MS

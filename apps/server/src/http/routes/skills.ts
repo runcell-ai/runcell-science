@@ -7,7 +7,7 @@ import type {
   ListSkillsResponse,
   MutateMcpServerResponse,
   SetSkillEnabledRequest
-} from '@open-science/contracts'
+} from '@runcell-science/contracts'
 
 import { McpManagementError } from '../../services/mcp-management-service'
 import { skillsService } from '../../services/skills-service'

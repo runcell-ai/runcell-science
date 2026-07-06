@@ -67,7 +67,7 @@ const zincConnector: ScienceConnectorModule = {
               excerpt: cartblanche.replace(/\s+/g, ' ').slice(0, 500)
             },
             notes: [
-              'Open Science does not bypass access challenges. Use file repository metadata when search endpoints are not programmatically reachable.'
+              'Runcell Science does not bypass access challenges. Use file repository metadata when search endpoints are not programmatically reachable.'
             ]
           },
           sources: [nowSource('ZINC main site', ZINC_MAIN), nowSource('CartBlanche22', CARTBLANCHE)]

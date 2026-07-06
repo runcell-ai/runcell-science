@@ -1368,128 +1368,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@open-science/contracts@workspace:*, @open-science/contracts@workspace:packages/contracts":
-  version: 0.0.0-use.local
-  resolution: "@open-science/contracts@workspace:packages/contracts"
-  languageName: unknown
-  linkType: soft
-
-"@open-science/nbcli@workspace:packages/nbcli":
-  version: 0.0.0-use.local
-  resolution: "@open-science/nbcli@workspace:packages/nbcli"
-  dependencies:
-    "@types/node": "npm:^22.15.17"
-    tsx: "npm:^4.20.3"
-  bin:
-    nbcli: ./nbcli.mjs
-  languageName: unknown
-  linkType: soft
-
-"@open-science/science-connectors@workspace:*, @open-science/science-connectors@workspace:packages/science-connectors":
-  version: 0.0.0-use.local
-  resolution: "@open-science/science-connectors@workspace:packages/science-connectors"
-  dependencies:
-    "@modelcontextprotocol/sdk": "npm:^1.29.0"
-    "@types/node": "npm:^24.13.2"
-    tsx: "npm:^4.20.3"
-    typescript: "npm:^5.8.3"
-    zod: "npm:^4.4.3"
-  bin:
-    open-science-science-connector: ./dist/cli.js
-  languageName: unknown
-  linkType: soft
-
-"@open-science/server@workspace:apps/server":
-  version: 0.0.0-use.local
-  resolution: "@open-science/server@workspace:apps/server"
-  dependencies:
-    "@anthropic-ai/claude-agent-sdk": "npm:^0.3.197"
-    "@anthropic-ai/sdk": "npm:^0.109.0"
-    "@modelcontextprotocol/sdk": "npm:^1.29.0"
-    "@open-science/contracts": "workspace:*"
-    "@open-science/science-connectors": "workspace:*"
-    "@types/better-sqlite3": "npm:^7.6.11"
-    "@types/node": "npm:^24.13.2"
-    better-sqlite3: "npm:^12.4.2"
-    dotenv: "npm:^17.0.1"
-    fastify: "npm:^4.29.1"
-    tsx: "npm:^4.20.3"
-    typescript: "npm:^5.8.3"
-    zod: "npm:^4.4.3"
-  languageName: unknown
-  linkType: soft
-
-"@open-science/ui@workspace:*, @open-science/ui@workspace:packages/ui":
-  version: 0.0.0-use.local
-  resolution: "@open-science/ui@workspace:packages/ui"
-  dependencies:
-    "@open-science/contracts": "workspace:*"
-    "@pierre/diffs": "npm:1.2.12"
-    "@radix-ui/react-dialog": "npm:^1.1.12"
-    "@radix-ui/react-scroll-area": "npm:^1.2.4"
-    "@radix-ui/react-separator": "npm:^1.1.2"
-    "@radix-ui/react-slot": "npm:^1.1.0"
-    "@radix-ui/react-tooltip": "npm:^1.2.0"
-    "@tailwindcss/vite": "npm:^4.0.0"
-    "@types/node": "npm:^24.13.2"
-    "@types/react": "npm:^19.2.17"
-    "@types/react-dom": "npm:^19.2.3"
-    "@vitejs/plugin-react": "npm:^6.0.3"
-    class-variance-authority: "npm:^0.7.0"
-    clsx: "npm:^2.1.1"
-    lucide-react: "npm:^0.520.0"
-    oxlint: "npm:^1.71.0"
-    react: "npm:^19.2.7"
-    react-dom: "npm:^19.2.7"
-    react-markdown: "npm:^10.1.0"
-    react-resizable-panels: "npm:^2.1.7"
-    tailwind-merge: "npm:^3.3.1"
-    tailwindcss: "npm:^4.0.0"
-    typescript: "npm:~6.0.2"
-    vite: "npm:^8.1.1"
-  peerDependencies:
-    react: ^19.2.7
-    react-dom: ^19.2.7
-  languageName: unknown
-  linkType: soft
-
-"@open-science/web@workspace:apps/web":
-  version: 0.0.0-use.local
-  resolution: "@open-science/web@workspace:apps/web"
-  dependencies:
-    "@jupyterlab/services": "npm:7.6.1"
-    "@open-science/contracts": "workspace:*"
-    "@open-science/ui": "workspace:*"
-    "@pierre/diffs": "npm:1.2.12"
-    "@tailwindcss/postcss": "npm:^4.0.0"
-    "@tailwindcss/vite": "npm:^4.0.0"
-    "@types/node": "npm:^24.13.2"
-    "@types/react": "npm:^19.2.17"
-    "@types/react-dom": "npm:^19.2.3"
-    "@vitejs/plugin-react": "npm:^6.0.3"
-    anser: "npm:^2.3.5"
-    autoprefixer: "npm:^10.4.20"
-    dompurify: "npm:^3.4.11"
-    katex: "npm:^0.16.0"
-    ketcher-core: "npm:3.15.0"
-    ketcher-react: "npm:3.15.0"
-    ketcher-standalone: "npm:3.15.0"
-    lucide-react: "npm:^0.520.0"
-    oxlint: "npm:^1.71.0"
-    postcss: "npm:^8.5.1"
-    react: "npm:^19.2.7"
-    react-dom: "npm:^19.2.7"
-    react-markdown: "npm:^10.1.0"
-    rehype-katex: "npm:^7.0.1"
-    remark-gfm: "npm:^4.0.1"
-    remark-math: "npm:^6.0.0"
-    tailwindcss: "npm:^4.0.0"
-    tsx: "npm:^4.20.3"
-    typescript: "npm:~6.0.2"
-    vite: "npm:^8.1.1"
-  languageName: unknown
-  linkType: soft
-
 "@oxc-project/types@npm:=0.137.0":
   version: 0.137.0
   resolution: "@oxc-project/types@npm:0.137.0"
@@ -2294,6 +2172,128 @@ __metadata:
   checksum: 10c0/99d9b06d90196823e4d8c841f258db7a16e5dbba5824a2962b05d907b79f1ba929d56f22dd744fd530936e568c865ee56a719dc31e57e13bc0a8eb4764a8d8dd
   languageName: node
   linkType: hard
+
+"@runcell-science/contracts@workspace:*, @runcell-science/contracts@workspace:packages/contracts":
+  version: 0.0.0-use.local
+  resolution: "@runcell-science/contracts@workspace:packages/contracts"
+  languageName: unknown
+  linkType: soft
+
+"@runcell-science/nbcli@workspace:packages/nbcli":
+  version: 0.0.0-use.local
+  resolution: "@runcell-science/nbcli@workspace:packages/nbcli"
+  dependencies:
+    "@types/node": "npm:^22.15.17"
+    tsx: "npm:^4.20.3"
+  bin:
+    nbcli: ./nbcli.mjs
+  languageName: unknown
+  linkType: soft
+
+"@runcell-science/science-connectors@workspace:*, @runcell-science/science-connectors@workspace:packages/science-connectors":
+  version: 0.0.0-use.local
+  resolution: "@runcell-science/science-connectors@workspace:packages/science-connectors"
+  dependencies:
+    "@modelcontextprotocol/sdk": "npm:^1.29.0"
+    "@types/node": "npm:^24.13.2"
+    tsx: "npm:^4.20.3"
+    typescript: "npm:^5.8.3"
+    zod: "npm:^4.4.3"
+  bin:
+    runcell-science-science-connector: ./dist/cli.js
+  languageName: unknown
+  linkType: soft
+
+"@runcell-science/server@workspace:apps/server":
+  version: 0.0.0-use.local
+  resolution: "@runcell-science/server@workspace:apps/server"
+  dependencies:
+    "@anthropic-ai/claude-agent-sdk": "npm:^0.3.197"
+    "@anthropic-ai/sdk": "npm:^0.109.0"
+    "@modelcontextprotocol/sdk": "npm:^1.29.0"
+    "@runcell-science/contracts": "workspace:*"
+    "@runcell-science/science-connectors": "workspace:*"
+    "@types/better-sqlite3": "npm:^7.6.11"
+    "@types/node": "npm:^24.13.2"
+    better-sqlite3: "npm:^12.4.2"
+    dotenv: "npm:^17.0.1"
+    fastify: "npm:^4.29.1"
+    tsx: "npm:^4.20.3"
+    typescript: "npm:^5.8.3"
+    zod: "npm:^4.4.3"
+  languageName: unknown
+  linkType: soft
+
+"@runcell-science/ui@workspace:*, @runcell-science/ui@workspace:packages/ui":
+  version: 0.0.0-use.local
+  resolution: "@runcell-science/ui@workspace:packages/ui"
+  dependencies:
+    "@pierre/diffs": "npm:1.2.12"
+    "@radix-ui/react-dialog": "npm:^1.1.12"
+    "@radix-ui/react-scroll-area": "npm:^1.2.4"
+    "@radix-ui/react-separator": "npm:^1.1.2"
+    "@radix-ui/react-slot": "npm:^1.1.0"
+    "@radix-ui/react-tooltip": "npm:^1.2.0"
+    "@runcell-science/contracts": "workspace:*"
+    "@tailwindcss/vite": "npm:^4.0.0"
+    "@types/node": "npm:^24.13.2"
+    "@types/react": "npm:^19.2.17"
+    "@types/react-dom": "npm:^19.2.3"
+    "@vitejs/plugin-react": "npm:^6.0.3"
+    class-variance-authority: "npm:^0.7.0"
+    clsx: "npm:^2.1.1"
+    lucide-react: "npm:^0.520.0"
+    oxlint: "npm:^1.71.0"
+    react: "npm:^19.2.7"
+    react-dom: "npm:^19.2.7"
+    react-markdown: "npm:^10.1.0"
+    react-resizable-panels: "npm:^2.1.7"
+    tailwind-merge: "npm:^3.3.1"
+    tailwindcss: "npm:^4.0.0"
+    typescript: "npm:~6.0.2"
+    vite: "npm:^8.1.1"
+  peerDependencies:
+    react: ^19.2.7
+    react-dom: ^19.2.7
+  languageName: unknown
+  linkType: soft
+
+"@runcell-science/web@workspace:apps/web":
+  version: 0.0.0-use.local
+  resolution: "@runcell-science/web@workspace:apps/web"
+  dependencies:
+    "@jupyterlab/services": "npm:7.6.1"
+    "@pierre/diffs": "npm:1.2.12"
+    "@runcell-science/contracts": "workspace:*"
+    "@runcell-science/ui": "workspace:*"
+    "@tailwindcss/postcss": "npm:^4.0.0"
+    "@tailwindcss/vite": "npm:^4.0.0"
+    "@types/node": "npm:^24.13.2"
+    "@types/react": "npm:^19.2.17"
+    "@types/react-dom": "npm:^19.2.3"
+    "@vitejs/plugin-react": "npm:^6.0.3"
+    anser: "npm:^2.3.5"
+    autoprefixer: "npm:^10.4.20"
+    dompurify: "npm:^3.4.11"
+    katex: "npm:^0.16.0"
+    ketcher-core: "npm:3.15.0"
+    ketcher-react: "npm:3.15.0"
+    ketcher-standalone: "npm:3.15.0"
+    lucide-react: "npm:^0.520.0"
+    oxlint: "npm:^1.71.0"
+    postcss: "npm:^8.5.1"
+    react: "npm:^19.2.7"
+    react-dom: "npm:^19.2.7"
+    react-markdown: "npm:^10.1.0"
+    rehype-katex: "npm:^7.0.1"
+    remark-gfm: "npm:^4.0.1"
+    remark-math: "npm:^6.0.0"
+    tailwindcss: "npm:^4.0.0"
+    tsx: "npm:^4.20.3"
+    typescript: "npm:~6.0.2"
+    vite: "npm:^8.1.1"
+  languageName: unknown
+  linkType: soft
 
 "@shikijs/core@npm:4.3.0":
   version: 4.3.0
@@ -6462,16 +6462,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"open-science@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "open-science@workspace:."
-  dependencies:
-    "@types/node": "npm:^22.15.17"
-    concurrently: "npm:^9.1.2"
-    typescript: "npm:^5.8.3"
-  languageName: unknown
-  linkType: soft
-
 "oxlint@npm:^1.71.0":
   version: 1.72.0
   resolution: "oxlint@npm:1.72.0"
@@ -7497,6 +7487,16 @@ __metadata:
   checksum: 10c0/3279de7450c8eae2f6e095e9edacbdeec0abb5cb7249c6e719faa0db2dba43574b4fff5892d9220631c9abaff52dd3cad648cfea2aaace845e1a071915ac8867
   languageName: node
   linkType: hard
+
+"runcell-science@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "runcell-science@workspace:."
+  dependencies:
+    "@types/node": "npm:^22.15.17"
+    concurrently: "npm:^9.1.2"
+    typescript: "npm:^5.8.3"
+  languageName: unknown
+  linkType: soft
 
 "rw@npm:1":
   version: 1.3.3

@@ -10,7 +10,7 @@ import type {
   MutateMcpServerResponse,
   RemoveMcpServerRequest,
   SetMcpServerEnabledRequest
-} from '@open-science/contracts'
+} from '@runcell-science/contracts'
 
 import { McpManagementError, mcpManagementService } from '../../services/mcp-management-service'
 

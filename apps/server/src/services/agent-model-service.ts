@@ -1,4 +1,4 @@
-import type { AgentModelOption, ListAgentModelsResponse } from '@open-science/contracts'
+import type { AgentModelOption, ListAgentModelsResponse } from '@runcell-science/contracts'
 
 import { fetchClaudeSupportedModels } from '../runtime/providers/claude/claude-models'
 import type { ModelListResponse } from '../runtime/providers/codex/generated/v2/ModelListResponse'

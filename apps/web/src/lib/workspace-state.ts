@@ -3,7 +3,7 @@ import type {
   AgentSessionDetail,
   AgentSessionWorktreeDiffResponse,
   RuntimeSseEvent
-} from '@open-science/contracts'
+} from '@runcell-science/contracts'
 import { applyRuntimeEvent, byCreatedAt, upsertById } from './session-events'
 
 export type WorktreeDiffAvailability = 'unknown' | 'checking' | 'available' | 'unavailable'

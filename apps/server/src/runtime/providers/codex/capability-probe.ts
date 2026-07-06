@@ -96,7 +96,7 @@ export async function probeCodexCapabilities(cwd: string = process.cwd()): Promi
         client.request('initialize', {
           clientInfo: {
             name: 'open_science',
-            title: 'Open Science',
+            title: 'Runcell Science',
             version: '0.1.0'
           },
           capabilities: {

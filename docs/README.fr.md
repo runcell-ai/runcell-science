@@ -1,6 +1,6 @@
-# Open Science
+# Runcell Science
 
-Open Science est un espace de travail local-first pour les chercheurs qui veulent utiliser des AI coding agents sans perdre le contexte, les fichiers ni le contrôle de leur projet.
+Runcell Science est un espace de travail local-first pour les chercheurs qui veulent utiliser des AI coding agents sans perdre le contexte, les fichiers ni le contrôle de leur projet.
 
 Il rassemble les conversations avec les agents, l'état du projet, les artefacts générés et le travail de suivi dans une interface claire. Au lieu de passer sans cesse du terminal aux fenêtres de chat et aux notes dispersées, vous pouvez garder le flux de recherche au même endroit.
 
@@ -8,7 +8,7 @@ Il rassemble les conversations avec les agents, l'état du projet, les artefacts
 
 ## Ce Que Cela Résout
 
-Le travail de recherche traverse souvent le code, les données, les articles, les notebooks et les expériences. Open Science est conçu pour rendre cette boucle plus facile à gérer :
+Le travail de recherche traverse souvent le code, les données, les articles, les notebooks et les expériences. Runcell Science est conçu pour rendre cette boucle plus facile à gérer :
 
 - Démarrer et poursuivre des sessions de programmation assistée par AI depuis une interface web.
 - Garder les réponses de l'agent, l'activité des outils et les résultats générés dans la même session.
@@ -17,7 +17,7 @@ Le travail de recherche traverse souvent le code, les données, les articles, le
 
 ## Pour Qui
 
-Open Science s'adresse aux chercheurs, research engineers, étudiants et équipes techniques qui veulent un environnement de développement assisté par AI plus proche d'un workspace de projet que d'un simple fil de discussion jetable.
+Runcell Science s'adresse aux chercheurs, research engineers, étudiants et équipes techniques qui veulent un environnement de développement assisté par AI plus proche d'un workspace de projet que d'un simple fil de discussion jetable.
 
 Il est particulièrement utile pour les travaux itératifs : explorer un jeu de données, construire un prototype, déboguer un pipeline, écrire du code d'analyse ou transformer une idée en artefact reproductible.
 
@@ -58,4 +58,4 @@ yarn build
 
 ## État Du Projet
 
-Open Science est encore jeune et évolue rapidement. L'objectif actuel est de proposer un flux local, pratique et centré sur la recherche assistée par AI, avec une documentation volontairement légère et accessible à une audience internationale.
+Runcell Science est encore jeune et évolue rapidement. L'objectif actuel est de proposer un flux local, pratique et centré sur la recherche assistée par AI, avec une documentation volontairement légère et accessible à une audience internationale.

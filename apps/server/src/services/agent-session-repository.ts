@@ -27,7 +27,7 @@ import type {
   AgentSessionSummary,
   AgentTurn,
   AgentTurnStatus
-} from '@open-science/contracts'
+} from '@runcell-science/contracts'
 
 import { getDb } from '../db/connection'
 import { mapEvent, mapTurnDiffs, type AgentEventRow } from './agent-session-projections'

@@ -1,4 +1,4 @@
-import type { AgentTimelineItem } from '@open-science/ui'
+import type { AgentTimelineItem } from '@runcell-science/ui'
 
 import { parseOutput } from './notebook-doc'
 import { joinText } from './nbformat'

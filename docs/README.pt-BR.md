@@ -1,6 +1,6 @@
-# Open Science
+# Runcell Science
 
-Open Science é um workspace local-first para pesquisadores que querem trabalhar com AI coding agents sem perder contexto, arquivos ou controle sobre o projeto.
+Runcell Science é um workspace local-first para pesquisadores que querem trabalhar com AI coding agents sem perder contexto, arquivos ou controle sobre o projeto.
 
 Ele reúne conversas com agents, estado do projeto, artefatos gerados e trabalho de acompanhamento em uma interface focada. Em vez de alternar entre terminal, janelas de chat e notas espalhadas, você pode manter o fluxo de pesquisa em um só lugar.
 
@@ -8,7 +8,7 @@ Ele reúne conversas com agents, estado do projeto, artefatos gerados e trabalho
 
 ## O Que Ele Resolve
 
-Pesquisa normalmente passa por código, dados, artigos, notebooks e experimentos. Open Science foi pensado para tornar esse ciclo mais fácil de gerenciar:
+Pesquisa normalmente passa por código, dados, artigos, notebooks e experimentos. Runcell Science foi pensado para tornar esse ciclo mais fácil de gerenciar:
 
 - Iniciar e continuar sessões de programação assistida por AI a partir de uma interface web.
 - Manter respostas do agent, atividade de ferramentas e resultados gerados dentro da mesma sessão.
@@ -17,7 +17,7 @@ Pesquisa normalmente passa por código, dados, artigos, notebooks e experimentos
 
 ## Para Quem
 
-Open Science é para pesquisadores, research engineers, estudantes e equipes técnicas que querem um ambiente de desenvolvimento assistido por AI mais parecido com um workspace de projeto do que com uma conversa descartável.
+Runcell Science é para pesquisadores, research engineers, estudantes e equipes técnicas que querem um ambiente de desenvolvimento assistido por AI mais parecido com um workspace de projeto do que com uma conversa descartável.
 
 Ele é especialmente útil quando o trabalho é iterativo: explorar um dataset, criar um protótipo, depurar um pipeline, escrever código de análise ou transformar uma ideia em um artefato reproduzível.
 
@@ -58,4 +58,4 @@ yarn build
 
 ## Estado Do Projeto
 
-Open Science está em estágio inicial e evolui rapidamente. O foco atual é oferecer um fluxo local e prático para pesquisa e desenvolvimento assistidos por AI, com documentação intencionalmente leve e acessível para uma audiência internacional.
+Runcell Science está em estágio inicial e evolui rapidamente. O foco atual é oferecer um fluxo local e prático para pesquisa e desenvolvimento assistidos por AI, com documentação intencionalmente leve e acessível para uma audiência internacional.

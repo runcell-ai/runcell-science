@@ -38,7 +38,7 @@ function createCheckpointTestRepo(): string {
   const cwd = mkdtempSync(path.join(os.tmpdir(), 'open-science-turn-checkpoint-'))
   git(cwd, ['init'])
   git(cwd, ['config', 'user.email', 'test@example.com'])
-  git(cwd, ['config', 'user.name', 'Open Science Test'])
+  git(cwd, ['config', 'user.name', 'Runcell Science Test'])
   mkdirSync(path.join(cwd, 'src'))
   writeFileSync(path.join(cwd, 'src', 'sample.txt'), 'before\n')
   git(cwd, ['add', '.'])

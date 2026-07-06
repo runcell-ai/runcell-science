@@ -1,5 +1,5 @@
 {
-  "name": "@open-science/web",
+  "name": "@runcell-science/web",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -13,9 +13,9 @@
   },
   "dependencies": {
     "@jupyterlab/services": "7.6.1",
-    "@open-science/contracts": "workspace:*",
-    "@open-science/ui": "workspace:*",
     "@pierre/diffs": "1.2.12",
+    "@runcell-science/contracts": "workspace:*",
+    "@runcell-science/ui": "workspace:*",
     "anser": "^2.3.5",
     "dompurify": "^3.4.11",
     "katex": "^0.16.0",

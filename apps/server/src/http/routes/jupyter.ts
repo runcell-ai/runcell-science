@@ -10,7 +10,7 @@ import type {
   JupyterServerConnectionResponse,
   JupyterServerStatusResponse,
   NotebookExecutionDetail
-} from '@open-science/contracts'
+} from '@runcell-science/contracts'
 
 import { sessionEventBus } from '../../runtime'
 import { agentSessionService, jupyterServerManager } from '../../services'

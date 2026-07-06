@@ -1,10 +1,10 @@
 {
-  "name": "@open-science/science-connectors",
+  "name": "@runcell-science/science-connectors",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "bin": {
-    "open-science-science-connector": "./dist/cli.js"
+    "runcell-science-science-connector": "./dist/cli.js"
   },
   "main": "dist/index.js",
   "types": "src/index.ts",

@@ -7,7 +7,7 @@ import type {
   ImportSkillResponse,
   ListSkillsResponse,
   SkillView
-} from '@open-science/contracts'
+} from '@runcell-science/contracts'
 
 import { config } from '../config/env'
 import { getDb } from '../db/connection'

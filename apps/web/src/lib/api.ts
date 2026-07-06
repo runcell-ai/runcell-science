@@ -23,7 +23,7 @@ import type {
   MutateMcpServerResponse,
   RemoveMcpServerRequest,
   ResolveAgentRequestResponse
-} from '@open-science/contracts'
+} from '@runcell-science/contracts'
 
 export const apiBaseUrl = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '').replace(/\/$/, '')
 

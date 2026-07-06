@@ -237,7 +237,7 @@ const ketcherChemistryConnector: ScienceConnectorModule = {
             mediaType: ketMediaType,
             opened: true
           },
-          sources: [{ name: 'Open Science artifact API', retrievedAt: new Date().toISOString() }]
+          sources: [{ name: 'Runcell Science artifact API', retrievedAt: new Date().toISOString() }]
         })
       })
     )
@@ -260,7 +260,7 @@ const ketcherChemistryConnector: ScienceConnectorModule = {
             path: response.artifact.path,
             state
           },
-          sources: [{ name: 'Open Science artifact state API', retrievedAt: new Date().toISOString() }]
+          sources: [{ name: 'Runcell Science artifact state API', retrievedAt: new Date().toISOString() }]
         })
       })
     )
@@ -286,7 +286,7 @@ const ketcherChemistryConnector: ScienceConnectorModule = {
             dirty: state.dirty,
             updatedAt: state.updatedAt
           },
-          sources: [{ name: 'Open Science artifact state API', retrievedAt: new Date().toISOString() }]
+          sources: [{ name: 'Runcell Science artifact state API', retrievedAt: new Date().toISOString() }]
         })
       })
     )
@@ -318,7 +318,7 @@ const ketcherChemistryConnector: ScienceConnectorModule = {
             bytesWritten: written.bytesWritten,
             saved: true
           },
-          sources: [{ name: 'Open Science artifact file API', retrievedAt: new Date().toISOString() }]
+          sources: [{ name: 'Runcell Science artifact file API', retrievedAt: new Date().toISOString() }]
         })
       })
     )

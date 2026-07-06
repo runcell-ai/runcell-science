@@ -4,7 +4,7 @@ import type {
   ListBundledScienceConnectorsResponse,
   MutateMcpServerResponse,
   SetBundledScienceConnectorEnabledRequest
-} from '@open-science/contracts'
+} from '@runcell-science/contracts'
 
 import {
   bundledScienceConnectorsService

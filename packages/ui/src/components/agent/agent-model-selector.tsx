@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { AgentProvider } from '@open-science/contracts'
+import type { AgentProvider } from '@runcell-science/contracts'
 import { Check, ChevronsUpDown, Cpu } from 'lucide-react'
 
 import { providerLabel } from './utils'

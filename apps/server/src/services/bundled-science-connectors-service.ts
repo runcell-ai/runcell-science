@@ -1,11 +1,11 @@
 import path from 'node:path'
 
-import { bundledScienceConnectors, findBundledScienceConnector } from '@open-science/science-connectors'
+import { bundledScienceConnectors, findBundledScienceConnector } from '@runcell-science/science-connectors'
 import type {
   BundledScienceConnectorView,
   ListBundledScienceConnectorsResponse,
   McpServerConfigInput
-} from '@open-science/contracts'
+} from '@runcell-science/contracts'
 
 import { config } from '../config/env'
 import { getDb } from '../db/connection'

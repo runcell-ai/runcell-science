@@ -5,7 +5,7 @@ import type {
   AgentSession,
   AgentTurn,
   ResolveAgentRequestRequest
-} from '@open-science/contracts'
+} from '@runcell-science/contracts'
 
 import { config } from '../../../config/env'
 import { agentSessionService } from '../../../services'
@@ -274,7 +274,7 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
       await client.request('initialize', {
         clientInfo: {
           name: 'open_science',
-          title: 'Open Science',
+          title: 'Runcell Science',
           version: '0.1.0'
         },
         capabilities: {

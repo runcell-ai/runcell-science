@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 
-import type { ListAgentModelsResponse } from '@open-science/contracts'
+import type { ListAgentModelsResponse } from '@runcell-science/contracts'
 
 import { agentModelService } from '../../services/agent-model-service'
 

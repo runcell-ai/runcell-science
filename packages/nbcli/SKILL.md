@@ -5,7 +5,7 @@ description: Shared-kernel Jupyter notebook workflow for data analysis and explo
 
 # Notebook Analysis
 
-Use this skill for data analysis or exploratory computation in an Open Science workspace.
+Use this skill for data analysis or exploratory computation in an Runcell Science workspace.
 
 Prefer `.ipynb` notebooks for analysis. Do not create throwaway analysis scripts when a notebook can hold the work and outputs.
 
@@ -46,4 +46,4 @@ node "$OPEN_SCIENCE_NBCLI" status
 
 The kernel is shared with the user's notebook panel. Variables you define stay live for the user, and variables they define are live for you. Do not restart the kernel unless asked.
 
-This requires `OPEN_SCIENCE_NBCLI` and `OPEN_SCIENCE_API_URL`. They are present inside the Open Science app. If either is absent, say so and fall back to normal tools.
+This requires `OPEN_SCIENCE_NBCLI` and `OPEN_SCIENCE_API_URL`. They are present inside the Runcell Science app. If either is absent, say so and fall back to normal tools.

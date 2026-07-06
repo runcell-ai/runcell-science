@@ -4,7 +4,7 @@ import type {
   JupyterInstallIpykernelResponse,
   JupyterPythonEnvStatus,
   JupyterServerConnectionResponse
-} from '@open-science/contracts'
+} from '@runcell-science/contracts'
 import { KernelSession } from './kernel-session'
 import type { ExecuteCellStatus, JupyterConnection, KernelStatus } from './kernel-session'
 import { NotebookDoc } from './notebook-doc'

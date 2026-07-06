@@ -7,7 +7,7 @@ import type {
   AgentPendingRequest,
   AgentProvider,
   AgentModelOption as ContractAgentModelOption
-} from '@open-science/contracts'
+} from '@runcell-science/contracts'
 
 export type AgentProviderOption = {
   value: AgentProvider

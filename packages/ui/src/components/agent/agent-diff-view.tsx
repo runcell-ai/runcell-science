@@ -1,7 +1,7 @@
 import type {
   AgentDiffFileChange,
   AgentTurnDiff
-} from '@open-science/contracts'
+} from '@runcell-science/contracts'
 import { PatchDiff } from '@pierre/diffs/react'
 import {
   FileDiff,

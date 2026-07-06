@@ -4,7 +4,7 @@ import type {
   AgentSession,
   AgentTurn,
   ResolveAgentRequestRequest
-} from '@open-science/contracts'
+} from '@runcell-science/contracts'
 
 export interface RuntimeStartInitialTurnInput {
   session: AgentSession

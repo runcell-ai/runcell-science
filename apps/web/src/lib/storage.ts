@@ -1,5 +1,5 @@
-import type { AgentProvider } from '@open-science/contracts'
-import type { AgentModelChoice } from '@open-science/ui'
+import type { AgentProvider } from '@runcell-science/contracts'
+import type { AgentModelChoice } from '@runcell-science/ui'
 
 const cwdStorageKey = 'open-science.cwd'
 const modelChoiceStorageKey = 'open-science.model-choice'

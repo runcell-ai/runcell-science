@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AgentSession, AgentSessionSummary } from '@open-science/contracts'
+import type { AgentSession, AgentSessionSummary } from '@runcell-science/contracts'
 import { api, toErrorMessage } from '../lib/api'
 import { upsertSessionSummary } from '../lib/session-events'
 

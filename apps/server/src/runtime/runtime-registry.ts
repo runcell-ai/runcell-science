@@ -1,4 +1,4 @@
-import type { AgentProvider, AgentSession, ResolveAgentRequestRequest } from '@open-science/contracts'
+import type { AgentProvider, AgentSession, ResolveAgentRequestRequest } from '@runcell-science/contracts'
 
 import { agentSessionService } from '../services'
 import type { CodeAgentProviderRuntime } from './code-agent-provider'

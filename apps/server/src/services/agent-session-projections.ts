@@ -12,7 +12,7 @@ import type {
   AgentEvent,
   AgentProvider,
   AgentTurnDiff
-} from '@open-science/contracts'
+} from '@runcell-science/contracts'
 
 export interface AgentEventRow {
   id: string

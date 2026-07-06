@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import type { WorkspaceFile, WorkspaceFileKind } from '@open-science/contracts'
+import type { WorkspaceFile, WorkspaceFileKind } from '@runcell-science/contracts'
 
 /** Hard cap on files returned from a single walk, to keep the response bounded
  * for large workspaces. When exceeded the response is flagged `truncated`. */

@@ -14,7 +14,7 @@ usage() {
   cat <<'EOF'
 Usage: scripts/dev.sh [options]
 
-Start the Open Science local development stack.
+Start the Runcell Science local development stack.
 
 Options:
   --install        Always run yarn install before starting

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { AgentSessionSummary } from '@open-science/contracts'
+import type { AgentSessionSummary } from '@runcell-science/contracts'
 import {
   CheckIcon,
   MonitorIcon,
@@ -255,7 +255,7 @@ function Gallery() {
           <div className="gallery-brand">
             <span className="gallery-mark">OS</span>
             <div>
-              <h1>Open Science UI</h1>
+              <h1>Runcell Science UI</h1>
               <p>Manuscript design language</p>
             </div>
           </div>

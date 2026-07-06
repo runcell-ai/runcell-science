@@ -41,10 +41,10 @@ function checkpointEnv(indexPath: string): NodeJS.ProcessEnv {
   return {
     ...process.env,
     GIT_INDEX_FILE: indexPath,
-    GIT_AUTHOR_NAME: 'Open Science Checkpoint',
-    GIT_AUTHOR_EMAIL: 'checkpoint@open-science.local',
-    GIT_COMMITTER_NAME: 'Open Science Checkpoint',
-    GIT_COMMITTER_EMAIL: 'checkpoint@open-science.local'
+    GIT_AUTHOR_NAME: 'Runcell Science Checkpoint',
+    GIT_AUTHOR_EMAIL: 'checkpoint@runcell-science.local',
+    GIT_COMMITTER_NAME: 'Runcell Science Checkpoint',
+    GIT_COMMITTER_EMAIL: 'checkpoint@runcell-science.local'
   }
 }
 

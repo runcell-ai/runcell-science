@@ -12,7 +12,7 @@ async function main() {
   }
 
   if (command !== 'connector' || !name) {
-    process.stderr.write('Usage: open-science-science-connector list | connector <name>\n')
+    process.stderr.write('Usage: runcell-science-science-connector list | connector <name>\n')
     process.exitCode = 2
     return
   }

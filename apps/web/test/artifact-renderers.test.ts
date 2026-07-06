@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import type { AgentArtifact } from '@open-science/contracts'
+import type { AgentArtifact } from '@runcell-science/contracts'
 
 import {
   builtinRendererKeys,

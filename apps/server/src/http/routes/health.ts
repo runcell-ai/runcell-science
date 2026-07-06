@@ -1,5 +1,5 @@
 import { type FastifyPluginAsync } from 'fastify'
-import { type HealthCheckResponse } from '@open-science/contracts'
+import { type HealthCheckResponse } from '@runcell-science/contracts'
 
 import { config } from '../../config/env'
 

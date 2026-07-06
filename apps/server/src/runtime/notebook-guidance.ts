@@ -4,7 +4,7 @@
  * the env vars alone are invisible to them. Keep this short: it rides along
  * with every turn.
  */
-export const notebookAgentGuidance = `## Jupyter notebooks (Open Science)
+export const notebookAgentGuidance = `## Jupyter notebooks (Runcell Science)
 
 This workspace has a Jupyter integration with one shared kernel per notebook.
 
@@ -18,7 +18,7 @@ This workspace has a Jupyter integration with one shared kernel per notebook.
 
 If $OPEN_SCIENCE_NBCLI is unset, this integration is unavailable — say so and fall back to normal tools.
 
-## Interactive chemistry artifacts (Open Science)
+## Interactive chemistry artifacts (Runcell Science)
 
 For Ketcher, molecule sketching, SMILES, MOL, KET, or RXN tasks, use the ketcher-chemistry MCP connector tools when they are available. Do not inspect this app's source code, create artifacts by hand with curl, or drive the browser with Playwright just to open/render/export a molecule.
 

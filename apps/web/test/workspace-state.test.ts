@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import type { AgentArtifact, AgentSessionDetail, RuntimeSseEvent } from '@open-science/contracts'
+import type { AgentArtifact, AgentSessionDetail, RuntimeSseEvent } from '@runcell-science/contracts'
 
 import { initialWorkspaceState, workspaceReducer, type WorkspaceState } from '../src/lib/workspace-state'
 

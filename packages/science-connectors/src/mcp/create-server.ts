@@ -8,7 +8,7 @@ import type { ScienceConnectorModule } from '../types.js'
 export function createScienceMcpServer(connector: ScienceConnectorModule): McpServer {
   const server = new McpServer({
     name: `open-science-${connector.name}`,
-    title: `Open Science ${connector.name}`,
+    title: `Runcell Science ${connector.name}`,
     version: '0.1.0'
   })
   connector.register(server)

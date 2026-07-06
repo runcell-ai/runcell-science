@@ -8,8 +8,8 @@ import type {
   AgentTurnDiff,
   NotebookExecutionDetail,
   RuntimeSseEvent
-} from '@open-science/contracts'
-import type { AgentTimelineItem } from '@open-science/ui'
+} from '@runcell-science/contracts'
+import type { AgentTimelineItem } from '@runcell-science/ui'
 
 type RuntimeActivityEvent = Extract<RuntimeSseEvent, { type: 'activity' }>
 

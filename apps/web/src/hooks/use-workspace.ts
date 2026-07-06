@@ -1,5 +1,5 @@
 import { useMemo, useReducer, useState } from 'react'
-import type { AgentArtifact, AgentPendingRequest, AgentProvider, RuntimeSseEvent } from '@open-science/contracts'
+import type { AgentArtifact, AgentPendingRequest, AgentProvider, RuntimeSseEvent } from '@runcell-science/contracts'
 import { api, toErrorMessage } from '../lib/api'
 import { buildTimelineItems, isRunning } from '../lib/session-events'
 import { initialWorkspaceState, workspaceReducer } from '../lib/workspace-state'

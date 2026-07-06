@@ -1,6 +1,6 @@
-# Open Science Web
+# Runcell Science Web
 
-React + Vite + TypeScript frontend shell for Open Science.
+React + Vite + TypeScript frontend shell for Runcell Science.
 
 This package currently contains only the non-business app frame:
 

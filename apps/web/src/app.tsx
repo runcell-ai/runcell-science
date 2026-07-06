@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { AgentProvider } from '@open-science/contracts'
+import type { AgentProvider } from '@runcell-science/contracts'
 import {
   AgentConversationHeader,
   AgentErrorBanner,
@@ -15,8 +15,8 @@ import {
   TooltipProvider,
   displaySessionTitle,
   providerLabel
-} from '@open-science/ui'
-import type { AgentModelChoice } from '@open-science/ui'
+} from '@runcell-science/ui'
+import type { AgentModelChoice } from '@runcell-science/ui'
 import { ArtifactsPanel } from './artifacts-panel'
 import { ConnectorsPanel } from './connectors-panel'
 import { SessionConnectorsMenu } from './session-connectors-menu'

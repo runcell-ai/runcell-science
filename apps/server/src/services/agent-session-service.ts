@@ -16,7 +16,7 @@ import type {
   AgentTurnDiff,
   AgentTurn,
   CreateAgentSessionResponse
-} from '@open-science/contracts'
+} from '@runcell-science/contracts'
 
 import { sessionEventBus } from '../runtime/session-event-bus'
 import {

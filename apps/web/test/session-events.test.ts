@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import type { AgentEvent, AgentSessionDetail, RuntimeSseEvent } from '@open-science/contracts'
+import type { AgentEvent, AgentSessionDetail, RuntimeSseEvent } from '@runcell-science/contracts'
 
 import { applyRuntimeEvent, buildTimelineItems } from '../src/lib/session-events'
 

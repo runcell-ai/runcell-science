@@ -5,7 +5,7 @@ import { StandaloneStructServiceProvider } from 'ketcher-standalone'
 import type { Ketcher } from 'ketcher-core'
 import 'ketcher-react/dist/index.css'
 
-import { Button } from '@open-science/ui'
+import { Button } from '@runcell-science/ui'
 import type { ArtifactRendererProps } from '../lib/artifact-renderers'
 
 const ketMediaType = 'application/vnd.ketcher.ket+json'

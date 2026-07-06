@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AgentSession, RuntimeSseEvent } from '@open-science/contracts'
+import type { AgentSession, RuntimeSseEvent } from '@runcell-science/contracts'
 import { api } from '../lib/api'
 import { runtimeEventTypes } from '../lib/session-events'
 

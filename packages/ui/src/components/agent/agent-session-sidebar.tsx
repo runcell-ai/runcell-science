@@ -1,4 +1,4 @@
-import type { AgentSessionSummary } from '@open-science/contracts'
+import type { AgentSessionSummary } from '@runcell-science/contracts'
 import { Plus, RefreshCw } from 'lucide-react'
 
 import { Button } from '../ui/button'

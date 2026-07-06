@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { FileDiff, Loader2, RefreshCw, X } from 'lucide-react'
-import type { AgentSessionWorktreeDiffResponse } from '@open-science/contracts'
-import { AgentDiffView, Button, ScrollArea } from '@open-science/ui'
+import type { AgentSessionWorktreeDiffResponse } from '@runcell-science/contracts'
+import { AgentDiffView, Button, ScrollArea } from '@runcell-science/ui'
 
 type WorktreeDiffPanelProps = {
   diff: AgentSessionWorktreeDiffResponse | null

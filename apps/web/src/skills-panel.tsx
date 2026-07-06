@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { AgentProvider, SkillView } from '@open-science/contracts'
+import type { AgentProvider, SkillView } from '@runcell-science/contracts'
 import {
   Button,
   ScrollArea,
@@ -10,7 +10,7 @@ import {
   SheetTitle,
   Input,
   Textarea
-} from '@open-science/ui'
+} from '@runcell-science/ui'
 import { api, toErrorMessage } from './lib/api'
 
 type SkillsPanelProps = {

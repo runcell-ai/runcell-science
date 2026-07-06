@@ -5,7 +5,7 @@ import type {
   AgentSessionStatus,
   AgentSessionSummary,
   AgentTurn
-} from '@open-science/contracts'
+} from '@runcell-science/contracts'
 
 export function providerLabel(provider: AgentProvider): string {
   switch (provider) {

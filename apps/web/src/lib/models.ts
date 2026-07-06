@@ -1,4 +1,4 @@
-import type { AgentModelOption } from '@open-science/ui'
+import type { AgentModelOption } from '@runcell-science/ui'
 
 /**
  * Fallback choices used while /api/models is loading or unavailable. The real

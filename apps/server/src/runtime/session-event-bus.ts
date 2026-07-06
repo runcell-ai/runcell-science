@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 
-import type { RuntimeSseEvent } from '@open-science/contracts'
+import type { RuntimeSseEvent } from '@runcell-science/contracts'
 
 type SessionEventListener = (event: RuntimeSseEvent) => void
 

@@ -6,7 +6,7 @@
 // unsupported-artifact fallback so a newer server never breaks the panel.
 
 import type { ComponentType } from 'react'
-import type { AgentArtifact } from '@open-science/contracts'
+import type { AgentArtifact } from '@runcell-science/contracts'
 
 /** Stable props every artifact renderer receives. */
 export interface ArtifactRendererProps {
