@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { AgentProvider, ListMcpServersResponse, McpServerView } from '@open-science/contracts'
+import type {
+  AgentProvider,
+  BundledScienceConnectorView,
+  ListBundledScienceConnectorsResponse,
+  ListMcpServersResponse,
+  McpServerView
+} from '@open-science/contracts'
 import {
   Button,
   ScrollArea,
@@ -39,6 +45,7 @@ function connectorTarget(server: McpServerView): string {
 
 export function ConnectorsPanel({ open, cwd, onOpenChange }: ConnectorsPanelProps) {
   const [data, setData] = useState<ListMcpServersResponse | null>(null)
+  const [bundledData, setBundledData] = useState<ListBundledScienceConnectorsResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busyKey, setBusyKey] = useState<string | null>(null)
@@ -54,8 +61,12 @@ export function ConnectorsPanel({ open, cwd, onOpenChange }: ConnectorsPanelProp
       setLoading(true)
       setError(null)
       try {
-        const response = await api.listMcpServers({ cwd: cwd ?? undefined, refresh })
-        setData(response)
+        const [mcpResponse, bundledResponse] = await Promise.all([
+          api.listMcpServers({ cwd: cwd ?? undefined, refresh }),
+          cwd ? api.listBundledConnectors({ cwd }) : Promise.resolve<ListBundledScienceConnectorsResponse>({ connectors: [] })
+        ])
+        setData(mcpResponse)
+        setBundledData(bundledResponse)
       } catch (err) {
         setError(toErrorMessage(err))
       } finally {
@@ -101,6 +112,15 @@ export function ConnectorsPanel({ open, cwd, onOpenChange }: ConnectorsPanelProp
     runAction(server.key, async () => {
       await api.setMcpServerEnabled(server.provider, server.name, !server.enabled)
       setNotice(`${server.enabled ? 'Disabled' : 'Enabled'} ${server.name}.`)
+    })
+
+  const toggleBundledConnector = (connector: BundledScienceConnectorView) =>
+    runAction(`bundled:${connector.name}`, async () => {
+      if (!cwd) {
+        throw new Error('Open a project before enabling bundled connectors.')
+      }
+      await api.setBundledConnectorEnabled(connector.name, cwd, !connector.enabled)
+      setNotice(`${connector.enabled ? 'Disabled' : 'Enabled'} ${connector.displayName}.`)
     })
 
   const loginServer = (server: McpServerView) =>
@@ -203,6 +223,40 @@ export function ConnectorsPanel({ open, cwd, onOpenChange }: ConnectorsPanelProp
         ))}
 
         <ScrollArea className="connectors-list">
+          <div className="connectors-section-label">Open Science science connectors</div>
+          {bundledData && bundledData.connectors.length === 0 && !loading ? (
+            <p className="connectors-empty">Open a project to enable bundled science connectors.</p>
+          ) : null}
+          {bundledData?.connectors.map((connector) => {
+            const busy = busyKey === `bundled:${connector.name}`
+            return (
+              <div key={connector.id} className="connector-row">
+                <div className="connector-row-main">
+                  <span className="connector-name">{connector.displayName}</span>
+                  <span className={`connector-status connector-status-${connector.enabled ? 'connected' : 'disabled'}`}>
+                    {connector.enabled ? 'Enabled' : 'Disabled'}
+                  </span>
+                </div>
+                <div className="connector-row-meta">
+                  <span className="connector-chip">Bundled</span>
+                  <span className="connector-chip">{connector.batch}</span>
+                  <span className="connector-chip">{connector.transport}</span>
+                  <span className="connector-chip">{connector.toolCount} tools</span>
+                </div>
+                <p className="connector-target">{connector.description}</p>
+                {connector.upstreams.length > 0 ? (
+                  <p className="connector-detail">{connector.upstreams.map((upstream) => upstream.name).join(', ')}</p>
+                ) : null}
+                <div className="connector-actions">
+                  <Button size="sm" variant="outline" disabled={busy || !cwd} onClick={() => void toggleBundledConnector(connector)}>
+                    {busy ? 'Working…' : connector.enabled ? 'Disable' : 'Enable'}
+                  </Button>
+                </div>
+              </div>
+            )
+          })}
+
+          <div className="connectors-section-label">Configured MCP servers</div>
           {data && data.servers.length === 0 && !loading ? (
             <p className="connectors-empty">No MCP servers configured yet. Paste a JSON snippet to add one.</p>
           ) : null}

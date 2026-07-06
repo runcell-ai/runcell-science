@@ -9,6 +9,7 @@ import type {
 
 import { config } from '../../../config/env'
 import { agentSessionService } from '../../../services'
+import { bundledScienceConnectorsService } from '../../../services/bundled-science-connectors-service'
 import type {
   CodeAgentProviderRuntime,
   RuntimeInterruptInput,
@@ -88,12 +89,30 @@ function buildMcpDisableOverrides(disabledMcpServers: string[]): string[] {
   return args
 }
 
+function codexConfigValue(value: unknown): string {
+  return JSON.stringify(value)
+}
+
+function buildBundledMcpOverrides(session: AgentSession): string[] {
+  const args: string[] = []
+  const bundled = bundledScienceConnectorsService.getEnabledMcpConfigs(session.cwd, session.disabledMcpServers)
+  for (const [name, entry] of Object.entries(bundled)) {
+    if (!MCP_OVERRIDE_NAME_PATTERN.test(name) || entry.type !== 'stdio' || !entry.command) {
+      continue
+    }
+    args.push('-c', `mcp_servers.${name}.command=${codexConfigValue(entry.command)}`)
+    args.push('-c', `mcp_servers.${name}.args=${codexConfigValue(entry.args ?? [])}`)
+    args.push('-c', `mcp_servers.${name}.enabled=true`)
+  }
+  return args
+}
+
 export class CodexRuntime implements CodeAgentProviderRuntime {
   private readonly sessions = new Map<string, CodexSessionState>()
   private readonly threadToSessionId = new Map<string, string>()
 
   async startInitialTurn(input: RuntimeStartInitialTurnInput): Promise<void> {
-    const state = await this.createInitializedState(input.session.id, input.session.disabledMcpServers)
+    const state = await this.createInitializedState(input.session)
     const response = await state.client.request<ThreadStartResponse>('thread/start', {
       cwd: input.session.cwd,
       model: input.session.model ?? config.codexDefaultModel,
@@ -171,15 +190,18 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
     this.threadToSessionId.clear()
   }
 
-  private async createInitializedState(sessionId: string, disabledMcpServers: string[]): Promise<CodexSessionState> {
+  private async createInitializedState(session: AgentSession): Promise<CodexSessionState> {
     const client = new CodexJsonRpcClient({
       binaryPath: config.codexBinaryPath,
       env: this.buildEnv(),
-      extraArgs: buildMcpDisableOverrides(disabledMcpServers)
+      extraArgs: [
+        ...buildBundledMcpOverrides(session),
+        ...buildMcpDisableOverrides(session.disabledMcpServers)
+      ]
     })
 
     const state: CodexSessionState = {
-      sessionId,
+      sessionId: session.id,
       client,
       threadId: null,
       providerSessionId: null,
@@ -196,7 +218,7 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
     })
     client.on('stderr', (line) => {
       agentSessionService.recordRuntimeActivity({
-        sessionId,
+        sessionId: session.id,
         turnId: state.activeLocalTurnId,
         provider: 'codex',
         eventType: 'stderr',
@@ -208,7 +230,7 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
       })
     })
     client.on('exit', () => {
-      this.sessions.delete(sessionId)
+      this.sessions.delete(session.id)
       if (state.threadId) {
         this.threadToSessionId.delete(state.threadId)
       }
@@ -236,7 +258,7 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
       )
     }
 
-    this.sessions.set(sessionId, state)
+    this.sessions.set(session.id, state)
     return state
   }
 
@@ -254,7 +276,7 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
       )
     }
 
-    const state = await this.createInitializedState(session.id, session.disabledMcpServers)
+    const state = await this.createInitializedState(session)
     const response = await state.client.request<ThreadResumeResponse>('thread/resume', {
       threadId: session.providerThreadId,
       cwd: session.cwd,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AgentProvider, McpServerView } from '@open-science/contracts'
+import type { AgentProvider, BundledScienceConnectorView, McpServerView } from '@open-science/contracts'
 import { Button } from '@open-science/ui'
 import { api, toErrorMessage } from './lib/api'
 
@@ -14,6 +14,7 @@ type SessionConnectorsMenuProps = {
 export function SessionConnectorsMenu({ sessionId, provider, cwd, disabledServers, running }: SessionConnectorsMenuProps) {
   const [open, setOpen] = useState(false)
   const [servers, setServers] = useState<McpServerView[]>([])
+  const [bundled, setBundled] = useState<BundledScienceConnectorView[]>([])
   const [disabled, setDisabled] = useState<string[]>(disabledServers)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -27,8 +28,12 @@ export function SessionConnectorsMenu({ sessionId, provider, cwd, disabledServer
     setLoading(true)
     setError(null)
     try {
-      const response = await api.listMcpServers({ cwd })
+      const [response, bundledResponse] = await Promise.all([
+        api.listMcpServers({ cwd }),
+        api.listBundledConnectors({ cwd })
+      ])
       setServers(response.servers.filter((server) => server.provider === provider && server.enabled))
+      setBundled(bundledResponse.connectors.filter((connector) => connector.enabled))
     } catch (err) {
       setError(toErrorMessage(err))
     } finally {
@@ -74,12 +79,25 @@ export function SessionConnectorsMenu({ sessionId, provider, cwd, disabledServer
     }
   }
 
-  const activeCount = servers.filter((server) => !disabled.includes(server.name)).length
+  const configuredItems = servers.map((server) => ({
+    key: server.key,
+    name: server.name,
+    label: server.name,
+    scope: server.scope
+  }))
+  const bundledItems = bundled.map((connector) => ({
+    key: connector.id,
+    name: connector.name,
+    label: connector.displayName,
+    scope: connector.scope
+  }))
+  const items = [...bundledItems, ...configuredItems]
+  const activeCount = items.filter((item) => !disabled.includes(item.name)).length
 
   return (
     <div className="session-connectors" ref={containerRef}>
       <Button size="sm" variant="outline" disabled={running} onClick={() => setOpen((v) => !v)}>
-        Connectors{servers.length > 0 ? ` ${activeCount}/${servers.length}` : ''}
+        Connectors{items.length > 0 ? ` ${activeCount}/${items.length}` : ''}
       </Button>
       {open ? (
         <div className="session-connectors-menu">
@@ -89,18 +107,18 @@ export function SessionConnectorsMenu({ sessionId, provider, cwd, disabledServer
           </p>
           {error ? <p className="connectors-error">{error}</p> : null}
           {loading ? <p className="connectors-empty">Loading…</p> : null}
-          {!loading && servers.length === 0 ? (
+          {!loading && items.length === 0 ? (
             <p className="connectors-empty">No {provider === 'codex' ? 'Codex' : 'Claude Code'} connectors configured.</p>
           ) : null}
-          {servers.map((server) => (
-            <label key={server.key} className="session-connectors-item">
+          {items.map((item) => (
+            <label key={item.key} className="session-connectors-item">
               <input
                 type="checkbox"
-                checked={!disabled.includes(server.name)}
-                onChange={() => void toggleServer(server.name)}
+                checked={!disabled.includes(item.name)}
+                onChange={() => void toggleServer(item.name)}
               />
-              <span className="session-connectors-name">{server.name}</span>
-              <span className="session-connectors-scope">{server.scope}</span>
+              <span className="session-connectors-name">{item.label}</span>
+              <span className="session-connectors-scope">{item.scope}</span>
             </label>
           ))}
         </div>

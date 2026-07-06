@@ -714,6 +714,20 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@open-science/science-connectors@workspace:*, @open-science/science-connectors@workspace:packages/science-connectors":
+  version: 0.0.0-use.local
+  resolution: "@open-science/science-connectors@workspace:packages/science-connectors"
+  dependencies:
+    "@modelcontextprotocol/sdk": "npm:^1.29.0"
+    "@types/node": "npm:^24.13.2"
+    tsx: "npm:^4.20.3"
+    typescript: "npm:^5.8.3"
+    zod: "npm:^4.4.3"
+  bin:
+    open-science-science-connector: ./dist/cli.js
+  languageName: unknown
+  linkType: soft
+
 "@open-science/server@workspace:apps/server":
   version: 0.0.0-use.local
   resolution: "@open-science/server@workspace:apps/server"
@@ -722,6 +736,7 @@ __metadata:
     "@anthropic-ai/sdk": "npm:^0.109.0"
     "@modelcontextprotocol/sdk": "npm:^1.29.0"
     "@open-science/contracts": "workspace:*"
+    "@open-science/science-connectors": "workspace:*"
     "@types/better-sqlite3": "npm:^7.6.11"
     "@types/node": "npm:^24.13.2"
     better-sqlite3: "npm:^12.4.2"

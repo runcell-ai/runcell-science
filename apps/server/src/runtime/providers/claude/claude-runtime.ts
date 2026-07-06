@@ -10,6 +10,7 @@ import {
 
 import { config } from '../../../config/env'
 import { agentSessionService } from '../../../services'
+import { bundledScienceConnectorsService } from '../../../services/bundled-science-connectors-service'
 import { mcpManagementService } from '../../../services/mcp-management-service'
 import type {
   CodeAgentProviderRuntime,
@@ -339,11 +340,12 @@ function buildSessionMcpOverride(
   disabledMcpServers: string[] | undefined,
   cwd: string | undefined
 ): Pick<Options, 'mcpServers' | 'strictMcpConfig'> {
-  if (!disabledMcpServers || disabledMcpServers.length === 0) {
+  const bundled = cwd ? bundledScienceConnectorsService.getEnabledMcpConfigs(cwd, disabledMcpServers ?? []) : {}
+  if (Object.keys(bundled).length === 0 && (!disabledMcpServers || disabledMcpServers.length === 0)) {
     return {}
   }
 
-  const disabled = new Set(disabledMcpServers)
+  const disabled = new Set(disabledMcpServers ?? [])
   const native = mcpManagementService.getClaudeServerConfigs(cwd)
   const subset: Record<string, unknown> = {}
   for (const [name, entry] of Object.entries(native)) {
@@ -351,6 +353,8 @@ function buildSessionMcpOverride(
       subset[name] = entry
     }
   }
+
+  Object.assign(subset, bundled)
 
   return {
     mcpServers: subset as Options['mcpServers'],

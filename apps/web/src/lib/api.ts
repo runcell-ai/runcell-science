@@ -13,6 +13,7 @@ import type {
   ImportMcpServersResponse,
   ImportSkillRequest,
   ImportSkillResponse,
+  ListBundledScienceConnectorsResponse,
   ListAgentModelsResponse,
   ListAgentSessionsResponse,
   ListMcpServersResponse,
@@ -122,6 +123,17 @@ export const api = {
     requestJson<ImportMcpServersResponse>('/api/mcp/import', {
       method: 'POST',
       body: JSON.stringify(input)
+    }),
+
+  listBundledConnectors: (input: { cwd: string }) => {
+    const params = new URLSearchParams({ cwd: input.cwd })
+    return requestJson<ListBundledScienceConnectorsResponse>(`/api/bundled-connectors?${params.toString()}`)
+  },
+
+  setBundledConnectorEnabled: (name: string, cwd: string, enabled: boolean) =>
+    requestJson<MutateMcpServerResponse>(`/api/bundled-connectors/${encodeURIComponent(name)}/enabled`, {
+      method: 'PATCH',
+      body: JSON.stringify({ cwd, enabled })
     }),
 
   listSkills: (input: { provider: string; cwd?: string; sessionId?: string; refresh?: boolean }) => {

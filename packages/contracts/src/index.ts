@@ -486,6 +486,41 @@ export interface McpOauthLoginResponse {
   authorizationUrl: string
 }
 
+export type ScienceConnectorBatch = 'P0' | 'P1' | 'P2'
+export type ScienceConnectorStatus = 'planned' | 'implemented' | 'verified'
+
+export interface BundledScienceConnectorUpstream {
+  name: string
+  termsUrl?: string
+  license?: string
+  infoUrl?: string
+  notes?: string
+}
+
+export interface BundledScienceConnectorView {
+  id: `bundled:${string}`
+  name: string
+  displayName: string
+  description: string
+  batch: ScienceConnectorBatch
+  transport: 'stdio'
+  auth: 'none'
+  upstreams: BundledScienceConnectorUpstream[]
+  status: ScienceConnectorStatus
+  toolCount: number
+  enabled: boolean
+  scope: 'project'
+}
+
+export interface ListBundledScienceConnectorsResponse {
+  connectors: BundledScienceConnectorView[]
+}
+
+export interface SetBundledScienceConnectorEnabledRequest {
+  cwd: string
+  enabled: boolean
+}
+
 export type SkillScopeKind = 'user' | 'repo' | 'system' | 'admin' | 'builtin'
 
 export interface SkillView {

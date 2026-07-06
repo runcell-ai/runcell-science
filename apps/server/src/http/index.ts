@@ -2,6 +2,7 @@ import fastify from 'fastify'
 
 import { config } from '../config/env'
 import { registerServerPlugins } from './plugins/placeholder'
+import { bundledConnectorsRoute } from './routes/bundled-connectors'
 import { healthRoute } from './routes/health'
 import { jupyterRoute } from './routes/jupyter'
 import { mcpRoute } from './routes/mcp'
@@ -18,6 +19,7 @@ export function createServer() {
 
   return server
     .register(healthRoute)
+    .register(bundledConnectorsRoute)
     .register(mcpRoute)
     .register(modelsRoute)
     .register(sessionsRoute)
