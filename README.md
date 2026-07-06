@@ -1,10 +1,17 @@
 # Runcell Science
 
+<img width="2988" height="1998" alt="runcell-science-demo" src="https://github.com/user-attachments/assets/2cb3146b-e71c-431f-9c96-8f03b2dcbe7a" />
+
+
 Runcell Science is a local-first workspace for researchers who want to work with AI coding agents without losing context, files, or control.
 
 It brings agent conversations, project state, generated artifacts, and follow-up work into one focused interface. Instead of jumping between terminals, chat windows, and scattered notes, you can keep the research workflow in a single place.
 
 English | [简体中文](docs/README.zh-CN.md) | [日本語](docs/README.ja.md) | [Español](docs/README.es.md) | [Français](docs/README.fr.md) | [Deutsch](docs/README.de.md) | [Português](docs/README.pt-BR.md)
+
+
+https://github.com/user-attachments/assets/5a4393ac-4720-45fa-ae0f-175733782347
+
 
 ## What It Helps With
 
