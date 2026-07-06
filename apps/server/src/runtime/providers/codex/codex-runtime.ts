@@ -53,6 +53,18 @@ export const streamingNotificationMethods = new Set<string>([
   'thread/realtime/transcript/delta'
 ])
 
+const transcriptThreadItemTypes = new Set<string>([
+  'userMessage',
+  'agentMessage',
+  'reasoning',
+  'plan',
+  'hookPrompt'
+])
+
+export function shouldRecordThreadItemActivity(item: ThreadItem): boolean {
+  return !transcriptThreadItemTypes.has(item.type)
+}
+
 interface CodexTurnBinding {
   sessionId: string
   localTurnId: string
@@ -540,6 +552,10 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
     item: ThreadItem,
     rawMessage: CodexJsonRpcMessage
   ): void {
+    if (!shouldRecordThreadItemActivity(item)) {
+      return
+    }
+
     const binding = this.findTurnBinding(providerTurnId)
     const sessionId = binding?.sessionId ?? this.threadToSessionId.get(threadId)
     if (!sessionId) {
