@@ -169,8 +169,26 @@ export interface AgentPendingRequest {
   resolvedAt: string | null
 }
 
+/**
+ * Optional presentation metadata for artifacts. `rendererKey` selects a
+ * client-side renderer from the artifact renderer registry; when it names a
+ * renderer the client does not know, the client falls back to an
+ * unsupported-artifact panel. All fields are nullable/optional so existing
+ * artifacts (and older servers) keep working unchanged.
+ */
+export interface AgentArtifactPresentation {
+  /** Stable renderer registry key (e.g. "builtin:image" or a custom key). */
+  rendererKey?: string | null
+  /** MIME/media type of the backing file or url content. */
+  mediaType?: string | null
+  /** Renderer-defined JSON metadata. */
+  metadata?: Record<string, unknown> | null
+  /** True when the renderer may write artifact state back; defaults to read-only. */
+  editable?: boolean
+}
+
 export type AgentArtifact =
-  | {
+  | (AgentArtifactPresentation & {
       id: string
       sessionId: string
       turnId: string | null
@@ -182,8 +200,8 @@ export type AgentArtifact =
       title: string | null
       createdAt: string
       updatedAt: string
-    }
-  | {
+    })
+  | (AgentArtifactPresentation & {
       id: string
       sessionId: string
       turnId: string | null
@@ -195,7 +213,7 @@ export type AgentArtifact =
       title: string | null
       createdAt: string
       updatedAt: string
-    }
+    })
 
 export interface AgentSessionDetail {
   session: AgentSession
@@ -243,23 +261,40 @@ export interface CreateAgentTurnResponse {
 }
 
 export type CreateAgentArtifactRequest =
-  | {
+  | (AgentArtifactPresentation & {
       kind?: Exclude<AgentArtifactKind, 'url'>
       path: string
       title?: string | null
       turnId?: string | null
       messageId?: string | null
-    }
-  | {
+      /** Re-focus the artifact in the UI even when it already exists. */
+      focus?: boolean
+    })
+  | (AgentArtifactPresentation & {
       kind?: 'url'
       url: string
       title?: string | null
       turnId?: string | null
       messageId?: string | null
-    }
+      /** Re-focus the artifact in the UI even when it already exists. */
+      focus?: boolean
+    })
 
 export interface CreateAgentArtifactResponse {
   artifact: AgentArtifact
+}
+
+/** Small renderer-owned JSON state stored per session artifact. */
+export interface AgentArtifactStateResponse {
+  artifact: AgentArtifact
+  /** Last written JSON value, or null when no state has been written yet. */
+  state: unknown
+  /** When the state was last written, or null when no state exists. */
+  updatedAt: string | null
+}
+
+export interface PutAgentArtifactStateRequest {
+  state: unknown
 }
 
 export interface AgentArtifactMarkdownContentResponse {
@@ -350,6 +385,8 @@ export type RuntimeSseEvent =
   | (RuntimeSseEventBase & {
       type: 'artifact.created' | 'artifact.updated'
       artifact: AgentArtifact
+      /** True when the client should focus/open the artifact in the panel. */
+      focus?: boolean
     })
   | (RuntimeSseEventBase & {
       type: 'runtime.error'

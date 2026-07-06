@@ -142,7 +142,10 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
           }
         }
       }
-      if (event.type === 'artifact.created') {
+      // New artifacts always open; updates only refocus when the backend
+      // explicitly asks (event.focus), so background state/metadata writes
+      // never yank the panel away from what the user is looking at.
+      if (event.type === 'artifact.created' || (event.type === 'artifact.updated' && event.focus)) {
         return {
           ...state,
           detail,
