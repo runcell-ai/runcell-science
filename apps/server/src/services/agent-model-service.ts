@@ -20,6 +20,25 @@ const claudeDefaultOption: AgentModelOption = {
 
 const MODEL_LIST_TIMEOUT_MS = 15_000
 
+function cleanHint(value: string | null | undefined): string | undefined {
+  const normalized = value?.trim()
+  return normalized && normalized.length > 0 ? normalized : undefined
+}
+
+function extractCurrentDefaultModel(description: string | null | undefined): string | null {
+  const normalized = description?.trim()
+  if (!normalized) {
+    return null
+  }
+
+  const match = normalized.match(/\bcurrently\s+(.+?)\)\s*(?:\u00b7|$)/i)
+  return match?.[1]?.trim() || null
+}
+
+function defaultLabel(providerDefault: string | null | undefined): string {
+  return providerDefault ? `Default (${providerDefault})` : 'Default'
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -50,7 +69,7 @@ export class AgentModelService {
   }
 
   private async listCodexModels(warnings: string[]): Promise<AgentModelOption[]> {
-    const options: AgentModelOption[] = [codexDefaultOption]
+    const options: AgentModelOption[] = [{ ...codexDefaultOption }]
 
     try {
       let cursor: string | null = null
@@ -65,11 +84,21 @@ export class AgentModelService {
             continue
           }
           const modelId = model.model || model.id
+          const label = model.displayName || modelId
+          if (model.isDefault) {
+            options[0] = {
+              ...options[0],
+              label: defaultLabel(label),
+              hint: cleanHint(model.description) ?? 'Codex default'
+            }
+          }
           options.push({
             provider: 'codex',
             model: modelId,
-            label: model.displayName || modelId,
-            ...(model.isDefault ? { hint: 'Codex default' } : {})
+            label,
+            ...(cleanHint(model.description) || model.isDefault
+              ? { hint: cleanHint(model.description) ?? 'Codex default' }
+              : {})
           })
         }
         cursor = page.nextCursor
@@ -82,7 +111,7 @@ export class AgentModelService {
   }
 
   private async listClaudeModels(warnings: string[]): Promise<AgentModelOption[]> {
-    const options: AgentModelOption[] = [claudeDefaultOption]
+    const options: AgentModelOption[] = [{ ...claudeDefaultOption }]
 
     try {
       const models = await fetchClaudeSupportedModels(MODEL_LIST_TIMEOUT_MS)
@@ -90,12 +119,19 @@ export class AgentModelService {
         // The SDK's synthetic "default" row is already covered by our null
         // Default option, and its value ("default") is not a concrete model id.
         if (model.value === 'default') {
+          const currentDefault = extractCurrentDefaultModel(model.description)
+          options[0] = {
+            ...options[0],
+            label: defaultLabel(currentDefault),
+            hint: cleanHint(model.description) ?? model.displayName
+          }
           continue
         }
         options.push({
           provider: 'claude',
           model: model.value,
-          label: model.displayName || model.value
+          label: model.displayName || model.value,
+          ...(cleanHint(model.description) ? { hint: cleanHint(model.description) } : {})
         })
       }
     } catch (error) {
