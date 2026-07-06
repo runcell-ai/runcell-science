@@ -88,6 +88,12 @@ ENV/
 .pytype/
 .ipynb_checkpoints/
 
+# Local science connector scratch exports
+/output/
+/*.ket
+/*.mol
+/*.smiles
+
 # OS / editor
 .DS_Store
 .idea/
