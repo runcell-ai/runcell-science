@@ -14,6 +14,7 @@ export interface ServerConfig {
   checkpointGitDir: string
   logDir: string
   migrationDir: string
+  staticWebDir: string | null
   nodeEnv: string
   logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent'
   webOrigin: string
@@ -35,8 +36,17 @@ export interface ServerConfig {
   claudeAllowDangerouslySkipPermissions: boolean
 }
 
-const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-const workspaceRoot = path.resolve(serverRoot, '../..')
+function defaultServerRoot(): string {
+  const metaUrl = typeof import.meta.url === 'string' ? import.meta.url : ''
+  return metaUrl ? path.resolve(path.dirname(fileURLToPath(metaUrl)), '../..') : process.cwd()
+}
+
+const serverRoot = process.env.OPEN_SCIENCE_SERVER_ROOT
+  ? path.resolve(process.env.OPEN_SCIENCE_SERVER_ROOT)
+  : defaultServerRoot()
+const workspaceRoot = process.env.OPEN_SCIENCE_WORKSPACE_ROOT
+  ? path.resolve(process.env.OPEN_SCIENCE_WORKSPACE_ROOT)
+  : path.resolve(serverRoot, '../..')
 
 dotenv.config({ path: path.join(workspaceRoot, '.env'), quiet: true })
 dotenv.config({ path: path.join(serverRoot, '.env'), quiet: true })
@@ -119,6 +129,7 @@ export const config: ServerConfig = {
   logDir: resolveWorkspacePath(process.env.LOG_DIR) ?? path.join(workspaceRoot, 'logs/server'),
   migrationDir:
     resolveWorkspacePath(process.env.MIGRATION_DIR) ?? path.join(workspaceRoot, 'apps/server/src/db/migrations'),
+  staticWebDir: resolveWorkspacePath(process.env.STATIC_WEB_DIR),
   nodeEnv: process.env.NODE_ENV ?? 'development',
   logLevel: resolveLogLevel(process.env.LOG_LEVEL),
   webOrigin: process.env.WEB_ORIGIN?.trim() || 'http://localhost:27183',

@@ -9,6 +9,7 @@ import { mcpRoute } from './routes/mcp'
 import { modelsRoute } from './routes/models'
 import { sessionsRoute } from './routes/sessions'
 import { skillsRoute } from './routes/skills'
+import { staticWebRoute } from './routes/static-web'
 
 export function createServer() {
   const server = fastify({
@@ -25,6 +26,7 @@ export function createServer() {
     .register(sessionsRoute)
     .register(jupyterRoute)
     .register(skillsRoute)
+    .register(staticWebRoute)
     .after(async () => {
       await registerServerPlugins(server)
     })

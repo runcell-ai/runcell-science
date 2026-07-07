@@ -1,0 +1,64 @@
+{
+  "name": "@runcell-science/desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "build:server-bundle": "node scripts/build-server.mjs",
+    "dev": "yarn build && yarn build:server-bundle && concurrently -k -n web,electron -c cyan,magenta \"yarn --cwd ../web run dev\" \"wait-on http://127.0.0.1:27183 && cross-env OPEN_SCIENCE_DESKTOP_WEB_URL=http://127.0.0.1:27183 electron .\"",
+    "prepare:assets": "yarn --cwd ../../packages/contracts run build && yarn --cwd ../../packages/science-connectors run build && yarn --cwd ../server run build && yarn --cwd ../web run build && yarn build && yarn build:server-bundle",
+    "package": "yarn prepare:assets && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir",
+    "dist": "yarn prepare:assets && electron-builder"
+  },
+  "dependencies": {
+    "@runcell-science/server": "workspace:*"
+  },
+  "devDependencies": {
+    "cross-env": "^10.1.0",
+    "electron": "43.0.0",
+    "electron-builder": "26.15.3",
+    "esbuild": "^0.28.1",
+    "wait-on": "^9.0.10"
+  },
+  "build": {
+    "appId": "science.runcell.open",
+    "productName": "Runcell Science",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../web/dist",
+        "to": "web"
+      },
+      {
+        "from": "../server/src/db/migrations",
+        "to": "server/migrations"
+      },
+      {
+        "from": "dist-server",
+        "to": "server"
+      },
+      {
+        "from": "../../packages/science-connectors/dist",
+        "to": "packages/science-connectors/dist"
+      },
+      {
+        "from": "../../packages/nbcli/nbcli.mjs",
+        "to": "packages/nbcli/nbcli.mjs"
+      }
+    ],
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity"
+    }
+  }
+}

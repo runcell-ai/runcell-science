@@ -9,10 +9,13 @@
   ],
   "scripts": {
     "dev": "concurrently -n web,server -c cyan,magenta \"yarn dev:web\" \"yarn dev:server\"",
+    "dev:desktop": "yarn --cwd apps/desktop run dev",
     "dev:ui": "yarn --cwd packages/ui run dev",
     "dev:web": "mkdir -p logs/dev && yarn --cwd apps/web run dev | tee logs/dev/web.log",
     "dev:server": "mkdir -p logs/dev && yarn --cwd apps/server run dev | tee logs/dev/server.log",
     "build": "yarn workspaces foreach -A -t run build",
+    "build:desktop": "yarn --cwd apps/desktop run package",
+    "dist:desktop": "yarn --cwd apps/desktop run dist",
     "typecheck": "yarn workspaces foreach -A -t run typecheck",
     "lint": "yarn workspaces foreach -A run lint",
     "db:migrate": "yarn --cwd apps/server run db:migrate"
