@@ -1,0 +1,116 @@
+name: Release Desktop
+
+# Builds signed/notarized macOS installers and unsigned Windows/Linux installers,
+# then attaches them to a draft GitHub Release for the pushed tag.
+#
+# Trigger a real release:   git tag v0.1.0 && git push origin v0.1.0
+# Dry-run (build only):     run this workflow via "Run workflow" (workflow_dispatch);
+#                           the release job is skipped when there is no v* tag.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14        # Apple Silicon runner → native arm64 better-sqlite3
+            platform: mac
+            arch: arm64
+          - os: macos-13        # Intel runner → native x64 better-sqlite3
+            platform: mac
+            arch: x64
+          - os: windows-latest
+            platform: win
+            arch: x64
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack (Yarn 4)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build installers
+        working-directory: apps/desktop
+        shell: bash
+        env:
+          # macOS signing + notarization (jobs on other OSes ignore these).
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          yarn prepare:assets
+          # Rebuild the better-sqlite3 native module against Electron's ABI (npmRebuild
+          # is off; electron-builder just copies the module we build here).
+          yarn rebuild:native
+          FLAGS="--${{ matrix.platform }} --${{ matrix.arch }} --publish never"
+          if [ "${{ matrix.platform }}" = "mac" ]; then
+            if [ -z "${CSC_LINK:-}" ] || [ -z "${APPLE_ID:-}" ]; then
+              echo "::warning::macOS signing/notarization secrets missing — building unsigned."
+              export CSC_IDENTITY_AUTO_DISCOVERY=false
+              FLAGS="$FLAGS -c.mac.notarize=false"
+            fi
+          fi
+          echo "electron-builder $FLAGS"
+          yarn electron-builder $FLAGS
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.platform }}-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
+
+  release:
+    name: Draft GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all installers
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List collected artifacts
+        run: ls -laR artifacts
+
+      - name: Publish draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: artifacts/**/*

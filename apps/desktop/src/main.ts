@@ -1,6 +1,7 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import fs from 'node:fs'
 import net from 'node:net'
+import os from 'node:os'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 
@@ -18,6 +19,101 @@ function isDevelopment(): boolean {
 
 function repoRoot(): string {
   return path.resolve(app.getAppPath(), '../..')
+}
+
+/**
+ * A GUI-launched app (Finder / Dock / dmg) inherits a minimal PATH
+ * (`/usr/bin:/bin:/usr/sbin:/sbin`) rather than the user's login-shell PATH, so
+ * the bundled server can't find the `codex` / `claude` / `jupyter` binaries the
+ * way the terminal-launched dev app does. Ask the login shell for its PATH and
+ * merge in the common install locations so the runtimes stay discoverable.
+ */
+function loginShellPath(): string | null {
+  if (process.platform === 'win32') {
+    return null
+  }
+
+  const shell = process.env.SHELL || '/bin/zsh'
+  const marker = '__RUNCELL_PATH__'
+  try {
+    const result = spawnSync(shell, ['-lic', `printf '${marker}%s${marker}' "$PATH"`], {
+      encoding: 'utf8',
+      timeout: 4000
+    })
+    const stdout = result.stdout ?? ''
+    const start = stdout.indexOf(marker)
+    const end = stdout.indexOf(marker, start + marker.length)
+    if (start !== -1 && end > start) {
+      const value = stdout.slice(start + marker.length, end).trim()
+      return value.length > 0 ? value : null
+    }
+  } catch {
+    // Fall through to the common-dir fallback below.
+  }
+  return null
+}
+
+function commonBinDirs(): string[] {
+  const home = os.homedir()
+  return [
+    '/opt/homebrew/bin',
+    '/opt/homebrew/sbin',
+    '/usr/local/bin',
+    '/usr/bin',
+    '/bin',
+    '/usr/sbin',
+    '/sbin',
+    path.join(home, '.local/bin'),
+    path.join(home, 'bin'),
+    path.join(home, '.cargo/bin'),
+    path.join(home, '.bun/bin'),
+    path.join(home, '.deno/bin'),
+    path.join(home, '.volta/bin'),
+    path.join(home, '.npm-global/bin'),
+    path.join(home, '.nvm/current/bin')
+  ]
+}
+
+let cachedRuntimePath: string | null = null
+
+function resolveRuntimePath(): string {
+  const current = process.env.PATH ?? ''
+
+  // Dev already runs from a terminal with the full PATH; Windows GUI apps inherit
+  // the registry PATH. Only the packaged unix app needs the login-shell lookup.
+  if (cachedRuntimePath !== null) {
+    return cachedRuntimePath
+  }
+  if (process.platform === 'win32' || !app.isPackaged) {
+    cachedRuntimePath = current
+    return cachedRuntimePath
+  }
+
+  const parts: string[] = []
+  const seen = new Set<string>()
+  const add = (value: string | null | undefined): void => {
+    if (!value) {
+      return
+    }
+    for (const entry of value.split(path.delimiter)) {
+      const trimmed = entry.trim()
+      if (trimmed && !seen.has(trimmed)) {
+        seen.add(trimmed)
+        parts.push(trimmed)
+      }
+    }
+  }
+
+  add(loginShellPath())
+  add(current)
+  for (const dir of commonBinDirs()) {
+    if (fs.existsSync(dir)) {
+      add(dir)
+    }
+  }
+
+  cachedRuntimePath = parts.join(path.delimiter)
+  return cachedRuntimePath
 }
 
 async function canUsePort(port: number): Promise<boolean> {
@@ -117,6 +213,7 @@ function startServer(port: number): void {
     NODE_PATH: [process.env.NODE_PATH, nodePath].filter(Boolean).join(path.delimiter),
     OPEN_SCIENCE_SERVER_ROOT: isDevelopment() ? path.join(repoRoot(), 'apps/server') : process.resourcesPath,
     OPEN_SCIENCE_WORKSPACE_ROOT: isDevelopment() ? repoRoot() : process.resourcesPath,
+    PATH: resolveRuntimePath(),
     SERVER_HOST: '127.0.0.1',
     SERVER_PORT: String(port),
     SQLITE_PATH: path.join(dataRoot, 'open-science.sqlite'),

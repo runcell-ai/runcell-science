@@ -1,0 +1,53 @@
+{
+  "name": "runcell-science",
+  "version": "0.1.0",
+  "description": "One-command launcher for Runcell Science — an open, hackable AI research workspace that runs on your existing Claude Code or Codex.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/runcell-ai/runcell-science#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/runcell-ai/runcell-science.git",
+    "directory": "packages/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/runcell-ai/runcell-science/issues"
+  },
+  "keywords": [
+    "runcell",
+    "science",
+    "ai",
+    "agent",
+    "claude-code",
+    "codex",
+    "jupyter",
+    "notebook",
+    "research",
+    "workspace"
+  ],
+  "bin": "bin/runcell-science.mjs",
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "prepack": "node scripts/build.mjs"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.4.2"
+  },
+  "devDependencies": {
+    "@runcell-science/contracts": "workspace:*",
+    "@runcell-science/science-connectors": "workspace:*",
+    "@runcell-science/server": "workspace:*",
+    "@runcell-science/web": "workspace:*",
+    "esbuild": "^0.28.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

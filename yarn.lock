@@ -329,7 +329,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@electron/rebuild@npm:^4.0.4":
+"@electron/rebuild@npm:^4.0.4, @electron/rebuild@npm:^4.1.0":
   version: 4.1.0
   resolution: "@electron/rebuild@npm:4.1.0"
   dependencies:
@@ -2445,6 +2445,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@runcell-science/desktop@workspace:apps/desktop"
   dependencies:
+    "@electron/rebuild": "npm:^4.1.0"
     "@runcell-science/server": "workspace:*"
     cross-env: "npm:^10.1.0"
     electron: "npm:43.0.0"
@@ -2533,7 +2534,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@runcell-science/web@workspace:apps/web":
+"@runcell-science/web@workspace:*, @runcell-science/web@workspace:apps/web":
   version: 0.0.0-use.local
   resolution: "@runcell-science/web@workspace:apps/web"
   dependencies:
@@ -9069,13 +9070,28 @@ __metadata:
   languageName: node
   linkType: hard
 
-"runcell-science@workspace:.":
+"runcell-science-monorepo@workspace:.":
   version: 0.0.0-use.local
-  resolution: "runcell-science@workspace:."
+  resolution: "runcell-science-monorepo@workspace:."
   dependencies:
     "@types/node": "npm:^22.15.17"
     concurrently: "npm:^9.1.2"
     typescript: "npm:^5.8.3"
+  languageName: unknown
+  linkType: soft
+
+"runcell-science@workspace:packages/cli":
+  version: 0.0.0-use.local
+  resolution: "runcell-science@workspace:packages/cli"
+  dependencies:
+    "@runcell-science/contracts": "workspace:*"
+    "@runcell-science/science-connectors": "workspace:*"
+    "@runcell-science/server": "workspace:*"
+    "@runcell-science/web": "workspace:*"
+    better-sqlite3: "npm:^12.4.2"
+    esbuild: "npm:^0.28.1"
+  bin:
+    runcell-science: bin/runcell-science.mjs
   languageName: unknown
   linkType: soft
 

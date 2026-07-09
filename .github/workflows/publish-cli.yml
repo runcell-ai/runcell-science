@@ -1,0 +1,47 @@
+name: Publish CLI
+
+# Publishes the `runcell-science` launcher package to npm.
+# Trigger by pushing a tag like `cli-v0.1.0` (must match packages/cli/package.json),
+# or run manually from the Actions tab. Requires the `NPM_TOKEN` repo secret
+# (an npm automation token with publish rights).
+
+on:
+  push:
+    tags:
+      - 'cli-v*'
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Enable Corepack (Yarn 4)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build workspace bundle
+        run: yarn build
+
+      - name: Verify tag matches package version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          PKG_VERSION="$(node -p "require('./packages/cli/package.json').version")"
+          TAG_VERSION="${GITHUB_REF_NAME#cli-v}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Tag '$GITHUB_REF_NAME' does not match packages/cli version '$PKG_VERSION'."
+            exit 1
+          fi
+
+      - name: Publish to npm
+        run: yarn workspace runcell-science npm publish --access public --tolerate-republish
+        env:
+          YARN_NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -2,6 +2,8 @@
   "name": "@runcell-science/desktop",
   "private": true,
   "version": "0.1.0",
+  "description": "Runcell Science desktop app — an open scientific workspace for Codex and Claude Code.",
+  "author": "Runcell <team@runcell.ai>",
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
@@ -9,13 +11,19 @@
     "build:server-bundle": "node scripts/build-server.mjs",
     "dev": "yarn build && yarn build:server-bundle && concurrently -k -n web,electron -c cyan,magenta \"yarn --cwd ../web run dev\" \"wait-on http://127.0.0.1:27183 && cross-env OPEN_SCIENCE_DESKTOP_WEB_URL=http://127.0.0.1:27183 electron .\"",
     "prepare:assets": "yarn --cwd ../../packages/contracts run build && yarn --cwd ../../packages/science-connectors run build && yarn --cwd ../server run build && yarn --cwd ../web run build && yarn build && yarn build:server-bundle",
-    "package": "yarn prepare:assets && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir",
-    "dist": "yarn prepare:assets && electron-builder"
+    "rebuild:native": "electron-rebuild -f -m . -o better-sqlite3",
+    "package": "yarn prepare:assets && yarn rebuild:native && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir",
+    "dist": "yarn prepare:assets && yarn rebuild:native && electron-builder",
+    "dist:mac:arm64": "yarn prepare:assets && yarn rebuild:native && electron-builder --mac --arm64 --publish never",
+    "dist:mac:x64": "yarn prepare:assets && yarn rebuild:native && electron-builder --mac --x64 --publish never",
+    "dist:win": "yarn prepare:assets && yarn rebuild:native && electron-builder --win --x64 --publish never",
+    "dist:linux": "yarn prepare:assets && yarn rebuild:native && electron-builder --linux --x64 --publish never"
   },
   "dependencies": {
     "@runcell-science/server": "workspace:*"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.1.0",
     "cross-env": "^10.1.0",
     "electron": "43.0.0",
     "electron-builder": "26.15.3",
@@ -25,8 +33,11 @@
   "build": {
     "appId": "science.runcell.open",
     "productName": "Runcell Science",
+    "artifactName": "Runcell-Science-${version}-${os}-${arch}.${ext}",
+    "npmRebuild": false,
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "dist/**",
@@ -52,13 +63,89 @@
       {
         "from": "../../packages/nbcli/nbcli.mjs",
         "to": "packages/nbcli/nbcli.mjs"
+      },
+      {
+        "from": "../../node_modules/better-sqlite3",
+        "to": "server/node_modules/better-sqlite3"
+      },
+      {
+        "from": "../../node_modules/bindings",
+        "to": "server/node_modules/bindings"
+      },
+      {
+        "from": "../../node_modules/file-uri-to-path",
+        "to": "server/node_modules/file-uri-to-path"
       }
     ],
     "asarUnpack": [
       "node_modules/better-sqlite3/**"
     ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "runcell-ai",
+        "repo": "runcell-science"
+      }
+    ],
     "mac": {
-      "category": "public.app-category.productivity"
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+      "notarize": true,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Science",
+      "maintainer": "Runcell <team@runcell.ai>"
     }
   }
 }

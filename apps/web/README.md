@@ -2,11 +2,11 @@
 
 React + Vite + TypeScript frontend shell for Runcell Science.
 
-This package currently contains only the non-business app frame:
+This package contains the browser workspace shell:
 
-- Session list panel placeholder
-- Chat panel placeholder
-- Artifacts / extensions panel placeholder
+- Agent session surfaces
+- Chat and event stream panels
+- Artifact, connector, and skills surfaces
 - shadcn/ui component setup
 
 Run from the repository root:
