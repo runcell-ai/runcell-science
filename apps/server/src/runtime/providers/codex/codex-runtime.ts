@@ -264,6 +264,13 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
       })
     })
     client.on('exit', () => {
+      // Guard by identity: after a resetSession the old app-server exits
+      // asynchronously, and by then a replacement state may already own this
+      // session id (and have re-bound the thread) — deleting blindly would
+      // orphan the replacement.
+      if (this.sessions.get(session.id) !== state) {
+        return
+      }
       this.sessions.delete(session.id)
       if (state.threadId) {
         this.threadToSessionId.delete(state.threadId)

@@ -34,6 +34,8 @@ export interface ServerConfig {
   claudeDefaultModel: string | null
   claudePermissionMode: 'bypassPermissions' | 'default' | 'acceptEdits' | 'plan' | 'dontAsk'
   claudeAllowDangerouslySkipPermissions: boolean
+  grokBinaryPath: string
+  grokDefaultModel: string | null
 }
 
 function defaultServerRoot(): string {
@@ -149,7 +151,9 @@ export const config: ServerConfig = {
   claudeAllowDangerouslySkipPermissions: resolveBoolean(
     process.env.CLAUDE_ALLOW_DANGEROUSLY_SKIP_PERMISSIONS,
     true
-  )
+  ),
+  grokBinaryPath: process.env.GROK_BINARY_PATH?.trim() || 'grok',
+  grokDefaultModel: process.env.GROK_DEFAULT_MODEL?.trim() || null
 }
 
 export function ensureRuntimeDirs(): void {

@@ -2,6 +2,7 @@ import type { AgentModelOption, ListAgentModelsResponse } from '@runcell-science
 
 import { fetchClaudeSupportedModels } from '../runtime/providers/claude/claude-models'
 import type { ModelListResponse } from '../runtime/providers/codex/generated/v2/ModelListResponse'
+import { fetchGrokModelCatalog } from '../runtime/providers/grok/grok-models'
 import { mcpManagementService } from './mcp-management-service'
 
 const codexDefaultOption: AgentModelOption = {
@@ -13,6 +14,13 @@ const codexDefaultOption: AgentModelOption = {
 
 const claudeDefaultOption: AgentModelOption = {
   provider: 'claude',
+  model: null,
+  label: 'Default',
+  hint: 'Configured default'
+}
+
+const grokDefaultOption: AgentModelOption = {
+  provider: 'grok',
   model: null,
   label: 'Default',
   hint: 'Configured default'
@@ -60,12 +68,13 @@ function dedupeOptions(options: AgentModelOption[]): AgentModelOption[] {
 export class AgentModelService {
   async listModelOptions(): Promise<ListAgentModelsResponse> {
     const warnings: string[] = []
-    const [codexModels, claudeModels] = await Promise.all([
+    const [codexModels, claudeModels, grokModels] = await Promise.all([
       this.listCodexModels(warnings),
-      this.listClaudeModels(warnings)
+      this.listClaudeModels(warnings),
+      this.listGrokModels(warnings)
     ])
 
-    return { models: dedupeOptions([...codexModels, ...claudeModels]), warnings }
+    return { models: dedupeOptions([...codexModels, ...claudeModels, ...grokModels]), warnings }
   }
 
   private async listCodexModels(warnings: string[]): Promise<AgentModelOption[]> {
@@ -136,6 +145,34 @@ export class AgentModelService {
       }
     } catch (error) {
       warnings.push(`Claude model list unavailable: ${errorMessage(error)}`)
+    }
+
+    return options
+  }
+
+  private async listGrokModels(warnings: string[]): Promise<AgentModelOption[]> {
+    const options: AgentModelOption[] = [{ ...grokDefaultOption }]
+
+    try {
+      const catalog = await fetchGrokModelCatalog(MODEL_LIST_TIMEOUT_MS)
+      for (const model of catalog.models) {
+        const label = model.name || model.modelId
+        if (model.modelId === catalog.currentModelId) {
+          options[0] = {
+            ...options[0],
+            label: defaultLabel(label),
+            hint: cleanHint(model.description) ?? 'Grok default'
+          }
+        }
+        options.push({
+          provider: 'grok',
+          model: model.modelId,
+          label,
+          ...(cleanHint(model.description) ? { hint: cleanHint(model.description) } : {})
+        })
+      }
+    } catch (error) {
+      warnings.push(`Grok model list unavailable: ${errorMessage(error)}`)
     }
 
     return options

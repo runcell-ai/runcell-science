@@ -57,11 +57,28 @@ export async function runMigrations(): Promise<void> {
 
     const applyTransaction = db.transaction(() => {
       db.exec(sql)
+      // foreign_key_check is a read-only pragma, so it can (and must) run
+      // inside the transaction: a violation has to roll back both the schema
+      // change and the _migrations row, otherwise the failed migration would
+      // be recorded as applied and skipped on the next startup.
+      const violations = db.pragma('foreign_key_check') as unknown[]
+      if (violations.length > 0) {
+        throw new Error(`Migration ${name} left ${violations.length} foreign key violation(s).`)
+      }
       db.prepare(
         "INSERT INTO _migrations (name, applied_at, checksum) VALUES (?, datetime('now'), ?)"
       ).run(name, currentChecksum)
     })
-    applyTransaction()
+    // Table rebuilds (the standard SQLite way to change a CHECK constraint)
+    // must not fire ON DELETE CASCADE when the old table is dropped. The
+    // foreign_keys pragma is a no-op inside a transaction, so toggle it out
+    // here.
+    db.pragma('foreign_keys = OFF')
+    try {
+      applyTransaction()
+    } finally {
+      db.pragma('foreign_keys = ON')
+    }
   }
 }
 

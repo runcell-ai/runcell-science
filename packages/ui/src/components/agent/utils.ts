@@ -13,6 +13,8 @@ export function providerLabel(provider: AgentProvider): string {
       return 'Codex'
     case 'claude':
       return 'Claude Code'
+    case 'grok':
+      return 'Grok'
     default:
       return provider
   }

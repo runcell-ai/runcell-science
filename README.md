@@ -63,6 +63,7 @@ The current runtime integrations are:
 
 - **Codex** through a JSON-RPC app-server integration.
 - **Claude** through the Claude Agent SDK.
+- **Grok Build** through the Agent Client Protocol (`grok agent stdio`).
 
 ## Getting Started
 
@@ -78,7 +79,7 @@ Then open the web app:
 http://127.0.0.1:27183
 ```
 
-Agent-backed sessions expect the corresponding Codex or Claude Code runtime to be installed and signed in.
+Agent-backed sessions expect the corresponding Codex, Claude Code, or Grok CLI runtime to be installed and signed in (for Grok, run `grok login` once or set `XAI_API_KEY`).
 
 Runcell Science also supports an Electron desktop app for end users who prefer a packaged application. Day-to-day development still runs through the web app and local server; the desktop app wraps those same web and server surfaces for distribution.
 

@@ -9,7 +9,8 @@ import type { AgentModelOption } from '@runcell-science/ui'
  */
 export const fallbackModelOptions: AgentModelOption[] = [
   { provider: 'codex', model: null, label: 'Default', hint: 'Configured default' },
-  { provider: 'claude', model: null, label: 'Default', hint: 'Configured default' }
+  { provider: 'claude', model: null, label: 'Default', hint: 'Configured default' },
+  { provider: 'grok', model: null, label: 'Default', hint: 'Configured default' }
 ]
 
 export function mergeModelOptions(primary: AgentModelOption[], fallback: AgentModelOption[]): AgentModelOption[] {

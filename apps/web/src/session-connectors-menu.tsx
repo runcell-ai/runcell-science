@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AgentProvider, BundledScienceConnectorView, McpServerView } from '@runcell-science/contracts'
-import { Button } from '@runcell-science/ui'
+import { Button, providerLabel } from '@runcell-science/ui'
 import { api, toErrorMessage } from './lib/api'
 
 type SessionConnectorsMenuProps = {
@@ -108,7 +108,7 @@ export function SessionConnectorsMenu({ sessionId, provider, cwd, disabledServer
           {error ? <p className="connectors-error">{error}</p> : null}
           {loading ? <p className="connectors-empty">Loading…</p> : null}
           {!loading && items.length === 0 ? (
-            <p className="connectors-empty">No {provider === 'codex' ? 'Codex' : 'Claude Code'} connectors configured.</p>
+            <p className="connectors-empty">No {providerLabel(provider)} connectors configured.</p>
           ) : null}
           {items.map((item) => (
             <label key={item.key} className="session-connectors-item">

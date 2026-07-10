@@ -11,6 +11,7 @@ import {
 } from './code-agent-provider'
 import { CodexRuntime } from './providers/codex/codex-runtime'
 import { ClaudeRuntime } from './providers/claude/claude-runtime'
+import { GrokRuntime } from './providers/grok/grok-runtime'
 
 export class RuntimeRegistry {
   private readonly runtimes = new Map<AgentProvider, CodeAgentProviderRuntime>()
@@ -18,6 +19,7 @@ export class RuntimeRegistry {
   constructor() {
     this.runtimes.set('codex', new CodexRuntime())
     this.runtimes.set('claude', new ClaudeRuntime())
+    this.runtimes.set('grok', new GrokRuntime())
   }
 
   async startInitialTurn(input: RuntimeStartInitialTurnInput): Promise<void> {

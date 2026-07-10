@@ -35,7 +35,7 @@ import { inferArtifactKindFromPath } from '../../services/agent-session-service'
 import { currentWorktreeDiff, isGitRepository } from '../../services/git-worktree-diff-service'
 import { classifyWorkspaceFile, listWorkspaceFiles } from '../../services/workspace-files-service'
 
-const agentProviders: AgentProvider[] = ['codex', 'claude']
+const agentProviders: AgentProvider[] = ['codex', 'claude', 'grok']
 const runtimeModes: AgentRuntimeMode[] = ['full_access', 'default']
 const localArtifactKinds: Exclude<AgentArtifactKind, 'url'>[] = ['image', 'pdf', 'markdown', 'html', 'custom']
 
@@ -279,7 +279,7 @@ function parseCreateSessionRequest(body: unknown): CreateAgentSessionRequest | A
   if (!isAgentProvider(body.provider)) {
     return {
       code: 'bad_request',
-      message: 'provider must be either "codex" or "claude".'
+      message: 'provider must be one of "codex", "claude", or "grok".'
     }
   }
 
@@ -1108,10 +1108,11 @@ export const sessionsRoute: FastifyPluginAsync = async (server) => {
           error: { code: 'not_found', message: 'Session was not found.' }
         } satisfies ApiErrorResponse)
       }
-      // Codex applies the selection by disposing and respawning the
-      // app-server; doing that mid-turn would strand the running turn.
+      // Codex and Grok apply the selection by disposing and respawning their
+      // agent process; doing that mid-turn would strand the running turn.
+      const resetOnConnectorChange = current.session.provider === 'codex' || current.session.provider === 'grok'
       const hasRunningTurn = current.turns.some((turn) => turn.status === 'running')
-      if (current.session.provider === 'codex' && hasRunningTurn) {
+      if (resetOnConnectorChange && hasRunningTurn) {
         return reply.code(409).send({
           error: {
             code: 'turn_running',
@@ -1122,9 +1123,10 @@ export const sessionsRoute: FastifyPluginAsync = async (server) => {
 
       const detail = agentSessionService.updateDisabledMcpServers(params.sessionId, disabledServers)
       // Codex keeps a long-lived app-server per session whose overrides are
-      // set at spawn; drop it so the next turn respawns and resumes the
-      // thread with the new selection. Claude injects per turn, no reset.
-      if (detail.session.provider === 'codex') {
+      // set at spawn; Grok's ACP session receives mcpServers only at
+      // session/new|load. Drop the runtime state so the next turn respawns
+      // and resumes with the new selection. Claude injects per turn, no reset.
+      if (resetOnConnectorChange) {
         runtimeRegistry.resetSession(detail.session)
       }
       return reply.send(detail)

@@ -14,7 +14,7 @@ export interface ApiInfo {
   environment: string
 }
 
-export type AgentProvider = 'codex' | 'claude'
+export type AgentProvider = 'codex' | 'claude' | 'grok'
 
 export type AgentRuntimeMode = 'full_access' | 'default'
 

@@ -62,7 +62,7 @@ export function readStoredModelChoice(): AgentModelChoice | null {
       return null
     }
     const parsed = JSON.parse(raw) as Partial<AgentModelChoice>
-    if (parsed.provider !== 'codex' && parsed.provider !== 'claude') {
+    if (parsed.provider !== 'codex' && parsed.provider !== 'claude' && parsed.provider !== 'grok') {
       return null
     }
     const model = typeof parsed.model === 'string' ? parsed.model : null
