@@ -4,6 +4,7 @@ import { fetchClaudeSupportedModels } from '../runtime/providers/claude/claude-m
 import type { ModelListResponse } from '../runtime/providers/codex/generated/v2/ModelListResponse'
 import { fetchGrokModelCatalog } from '../runtime/providers/grok/grok-models'
 import { sanitizeProviderOutput } from '../runtime/provider-output-sanitizer'
+import { fetchOpenCodeModelOptions } from '../runtime/providers/opencode/opencode-models'
 import { mcpManagementService } from './mcp-management-service'
 
 const codexDefaultOption: AgentModelOption = {
@@ -69,13 +70,14 @@ function dedupeOptions(options: AgentModelOption[]): AgentModelOption[] {
 export class AgentModelService {
   async listModelOptions(): Promise<ListAgentModelsResponse> {
     const warnings: string[] = []
-    const [codexModels, claudeModels, grokModels] = await Promise.all([
+    const [codexModels, claudeModels, grokModels, openCodeModels] = await Promise.all([
       this.listCodexModels(warnings),
       this.listClaudeModels(warnings),
-      this.listGrokModels(warnings)
+      this.listGrokModels(warnings),
+      this.listOpenCodeModels(warnings)
     ])
 
-    return { models: dedupeOptions([...codexModels, ...claudeModels, ...grokModels]), warnings }
+    return { models: dedupeOptions([...codexModels, ...claudeModels, ...grokModels, ...openCodeModels]), warnings }
   }
 
   private async listCodexModels(warnings: string[]): Promise<AgentModelOption[]> {
@@ -177,6 +179,22 @@ export class AgentModelService {
     }
 
     return options
+  }
+
+  private async listOpenCodeModels(warnings: string[]): Promise<AgentModelOption[]> {
+    try {
+      return await fetchOpenCodeModelOptions(MODEL_LIST_TIMEOUT_MS)
+    } catch (error) {
+      warnings.push(`OpenCode model list unavailable: ${errorMessage(error)}`)
+      return [
+        {
+          provider: 'opencode',
+          model: null,
+          label: 'Default',
+          hint: 'OpenCode configured default'
+        }
+      ]
+    }
   }
 }
 

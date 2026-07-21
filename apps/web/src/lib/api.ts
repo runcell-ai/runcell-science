@@ -27,6 +27,7 @@ import type {
   McpOauthLoginResponse,
   MutateMcpServerResponse,
   RemoveMcpServerRequest,
+  ResolveAgentRequestRequest,
   ResolveAgentRequestResponse
 } from '@runcell-science/contracts'
 
@@ -205,10 +206,10 @@ export const api = {
       method: 'POST'
     }),
 
-  resolveRequest: (sessionId: string, requestId: string, decision: 'allow' | 'deny') =>
+  resolveRequest: (sessionId: string, requestId: string, resolution: ResolveAgentRequestRequest) =>
     requestJson<ResolveAgentRequestResponse>(`/api/sessions/${sessionId}/requests/${requestId}/resolve`, {
       method: 'POST',
-      body: JSON.stringify({ decision })
+      body: JSON.stringify(resolution)
     }),
 
   getWorktreeDiffStatus: (sessionId: string) =>

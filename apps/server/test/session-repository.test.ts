@@ -77,6 +77,42 @@ test('pending sessions stay hidden until a non-empty assistant delta activates t
   assert.ok(activated?.session.activatedAt)
 })
 
+test('OpenCode sessions, events, and checkpoints satisfy the migrated provider constraints', () => {
+  const repository = new AgentSessionRepository()
+  const service = new AgentSessionService(repository)
+  const created = service.createPendingSessionForInitialMessage({
+    provider: 'opencode',
+    cwd: process.cwd(),
+    initialMessage: 'hello from opencode',
+    model: 'opencode/example',
+    runtimeMode: 'full_access'
+  })
+  const turn = created.detail.turns[0]
+  assert.ok(turn)
+  service.captureTurnCheckpointBaseline({ session: created.detail.session, turn })
+
+  service.appendAssistantMessageDelta({
+    sessionId: created.sessionId,
+    turnId: turn.id,
+    provider: 'opencode',
+    delta: 'hello',
+    providerItemId: 'opencode:test:assistant'
+  })
+  service.recordRuntimeActivity({
+    sessionId: created.sessionId,
+    turnId: turn.id,
+    provider: 'opencode',
+    eventType: 'test.event',
+    title: 'OpenCode migration test',
+    status: 'completed'
+  })
+
+  const detail = service.getSessionDetail(created.sessionId)
+  assert.equal(detail?.session.provider, 'opencode')
+  assert.equal(detail?.events.some((event) => event.provider === 'opencode'), true)
+  assert.ok(getDb().prepare('SELECT provider FROM agent_turn_checkpoints WHERE turn_id = ?').get(turn.id))
+})
+
 test('assistant deltas with the same provider item id merge into one projected message', () => {
   const repository = new AgentSessionRepository()
   const detail = repository.createPendingSessionFromInitialMessage({

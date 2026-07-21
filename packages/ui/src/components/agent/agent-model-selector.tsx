@@ -22,8 +22,8 @@ function isSameChoice(option: AgentModelOption, provider: AgentProvider, model: 
 
 /**
  * Agent + model picker for the composer footer. A single control chooses both
- * the provider (Codex / Claude Code) and the model within it, grouped the way
- * the reference model menu is: provider headers with their models beneath.
+ * the provider and the model within it, grouped as provider headers with their
+ * models beneath.
  */
 function AgentModelSelector({
   options,

@@ -1,12 +1,13 @@
-import { type ReactNode, useEffect, useRef } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { ExternalLink, FileText, Globe2, Image as ImageIcon, Loader2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 
 import { Button } from '../ui/button'
+import { Input } from '../ui/input'
 import { ScrollArea } from '../ui/scroll-area'
 import { AgentDiffView } from './agent-diff-view'
 import { AgentActivityIcon } from './agent-icons'
-import type { AgentRequestDecision, AgentTimelineItem } from './types'
+import type { AgentRequestResolution, AgentTimelineItem } from './types'
 import {
   compactText,
   eventSummary,
@@ -21,7 +22,7 @@ type AgentTimelineProps = {
   resolvingRequestId: string | null
   onResolveRequest: (
     request: Extract<AgentTimelineItem, { type: 'request' }>['request'],
-    decision: AgentRequestDecision
+    resolution: AgentRequestResolution
   ) => void
   onOpenArtifact: (artifact: Extract<AgentTimelineItem, { type: 'artifact' }>['artifact']) => void
   renderNotebookExecution?: (item: Extract<AgentTimelineItem, { type: 'notebook-execution' }>) => ReactNode
@@ -156,33 +157,124 @@ function AgentRequestRow({
   onResolveRequest: AgentTimelineProps['onResolveRequest']
 }) {
   const isOpen = item.request.status === 'open'
+  const questions = parseRequestQuestions(item.request)
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<number, string[]>>({})
+  const [customAnswers, setCustomAnswers] = useState<Record<number, string>>({})
+
+  const resolvedAnswers = questions?.map((question, index) => {
+    const selected = selectedAnswers[index] ?? []
+    const custom = customAnswers[index]?.trim()
+    return custom ? (question.multiple ? [...selected, custom] : [custom]) : selected
+  })
+  const canSubmitAnswers = resolvedAnswers?.every((answers) => answers.length > 0) ?? false
+
+  function selectOption(questionIndex: number, label: string, multiple: boolean): void {
+    if (!multiple) {
+      setCustomAnswers((current) => ({ ...current, [questionIndex]: '' }))
+    }
+    setSelectedAnswers((current) => {
+      const selected = current[questionIndex] ?? []
+      const next = multiple
+        ? selected.includes(label)
+          ? selected.filter((entry) => entry !== label)
+          : [...selected, label]
+        : [label]
+      return { ...current, [questionIndex]: next }
+    })
+  }
 
   return (
     <article className={`timeline-row request-row request-${item.request.status}`}>
       <div className="request-card">
         <div className="request-heading">
           <span className="request-eyebrow">
-            {isOpen ? 'Approval required' : 'Approval request'}
+            {questions ? (isOpen ? 'Input required' : 'Input request') : isOpen ? 'Approval required' : 'Approval request'}
           </span>
           <StatusPill status={item.request.status} />
         </div>
         <span className="request-title">
           {item.request.title ?? item.request.type}
         </span>
-        {isOpen ? (
+        {isOpen && questions ? (
+          <>
+            <div className="request-questions">
+              {questions.map((question, questionIndex) => (
+                <fieldset className="request-question" key={`${question.header}:${questionIndex}`}>
+                  <legend>{question.header}</legend>
+                  <p>{question.question}</p>
+                  {question.options.length > 0 ? (
+                    <div className="request-options">
+                      {question.options.map((option) => {
+                        const checked = (selectedAnswers[questionIndex] ?? []).includes(option.label)
+                        return (
+                          <label className="request-option" key={option.label}>
+                            <input
+                              type={question.multiple ? 'checkbox' : 'radio'}
+                              name={`request-${item.request.id}-${questionIndex}`}
+                              checked={checked}
+                              onChange={() => selectOption(questionIndex, option.label, question.multiple)}
+                            />
+                            <span>
+                              <strong>{option.label}</strong>
+                              {option.description ? <small>{option.description}</small> : null}
+                            </span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  ) : null}
+                  {question.custom ? (
+                    <Input
+                      value={customAnswers[questionIndex] ?? ''}
+                      placeholder="Type an answer"
+                      aria-label={`${question.header} custom answer`}
+                      onChange={(event) => {
+                        const value = event.target.value
+                        setCustomAnswers((current) => ({ ...current, [questionIndex]: value }))
+                        if (!question.multiple && value.trim()) {
+                          setSelectedAnswers((current) => ({ ...current, [questionIndex]: [] }))
+                        }
+                      }}
+                    />
+                  ) : null}
+                </fieldset>
+              ))}
+            </div>
+            <div className="request-actions">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={resolvingRequestId === item.request.id}
+                onClick={() => onResolveRequest(item.request, { decision: 'deny' })}
+              >
+                Deny
+              </Button>
+              <Button
+                size="sm"
+                disabled={resolvingRequestId === item.request.id || !canSubmitAnswers}
+                onClick={() =>
+                  resolvedAnswers &&
+                  onResolveRequest(item.request, { decision: 'answer', answers: resolvedAnswers })
+                }
+              >
+                Submit answer
+              </Button>
+            </div>
+          </>
+        ) : isOpen ? (
           <div className="request-actions">
             <Button
               variant="outline"
               size="sm"
               disabled={resolvingRequestId === item.request.id}
-              onClick={() => onResolveRequest(item.request, 'deny')}
+              onClick={() => onResolveRequest(item.request, { decision: 'deny' })}
             >
               Deny
             </Button>
             <Button
               size="sm"
               disabled={resolvingRequestId === item.request.id}
-              onClick={() => onResolveRequest(item.request, 'allow')}
+              onClick={() => onResolveRequest(item.request, { decision: 'allow' })}
             >
               Allow
             </Button>
@@ -191,6 +283,49 @@ function AgentRequestRow({
       </div>
     </article>
   )
+}
+
+interface RequestQuestion {
+  header: string
+  question: string
+  options: Array<{ label: string; description: string }>
+  multiple: boolean
+  custom: boolean
+}
+
+function parseRequestQuestions(
+  request: Extract<AgentTimelineItem, { type: 'request' }>['request']
+): RequestQuestion[] | null {
+  if (request.type !== 'opencode.question' && request.type !== 'opencode.question-v2') return null
+  try {
+    const payload = JSON.parse(request.payloadJson) as { questions?: unknown }
+    if (!Array.isArray(payload.questions) || payload.questions.length === 0) return null
+    const questions: RequestQuestion[] = []
+    for (const value of payload.questions) {
+      if (!value || typeof value !== 'object') return null
+      const record = value as Record<string, unknown>
+      if (typeof record.header !== 'string' || typeof record.question !== 'string' || !Array.isArray(record.options)) {
+        return null
+      }
+      const options: RequestQuestion['options'] = []
+      for (const option of record.options) {
+        if (!option || typeof option !== 'object') return null
+        const optionRecord = option as Record<string, unknown>
+        if (typeof optionRecord.label !== 'string' || typeof optionRecord.description !== 'string') return null
+        options.push({ label: optionRecord.label, description: optionRecord.description })
+      }
+      questions.push({
+        header: record.header,
+        question: record.question,
+        options,
+        multiple: record.multiple === true,
+        custom: record.custom === true
+      })
+    }
+    return questions
+  } catch {
+    return null
+  }
 }
 
 function AgentDiffRow({

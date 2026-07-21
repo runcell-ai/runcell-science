@@ -131,6 +131,15 @@ create_default_env() {
     printf 'CLAUDE_DEFAULT_MODEL=\n'
     printf 'CLAUDE_PERMISSION_MODE=bypassPermissions\n'
     printf 'CLAUDE_ALLOW_DANGEROUSLY_SKIP_PERMISSIONS=true\n'
+    printf '\n'
+    printf 'GROK_BINARY_PATH=grok\n'
+    printf 'GROK_DEFAULT_MODEL=\n'
+    printf '\n'
+    printf 'OPENCODE_BINARY_PATH=opencode\n'
+    printf 'OPENCODE_DEFAULT_MODEL=\n'
+    printf 'OPENCODE_SERVER_URL=\n'
+    printf 'OPENCODE_SERVER_USERNAME=opencode\n'
+    printf 'OPENCODE_SERVER_PASSWORD=\n'
   } > "$ROOT_DIR/.env"
 }
 
@@ -169,6 +178,8 @@ has_binary() {
 check_agent_binaries() {
   local codex_binary="${CODEX_BINARY_PATH:-codex}"
   local claude_binary="${CLAUDE_CODE_BINARY_PATH:-claude}"
+  local grok_binary="${GROK_BINARY_PATH:-grok}"
+  local opencode_binary="${OPENCODE_BINARY_PATH:-opencode}"
 
   if ! has_binary "$codex_binary"; then
     warn "Codex CLI was not found at '$codex_binary'. Codex sessions will fail until it is installed and logged in."
@@ -176,6 +187,14 @@ check_agent_binaries() {
 
   if ! has_binary "$claude_binary"; then
     warn "Claude Code CLI was not found at '$claude_binary'. Claude sessions will fail until it is installed and logged in."
+  fi
+
+  if ! has_binary "$grok_binary"; then
+    warn "Grok CLI was not found at '$grok_binary'. Grok sessions will fail until it is installed and logged in."
+  fi
+
+  if [[ -z "${OPENCODE_SERVER_URL:-}" ]] && ! has_binary "$opencode_binary"; then
+    warn "OpenCode CLI was not found at '$opencode_binary'. Install/authenticate it, or configure OPENCODE_SERVER_URL in the server environment."
   fi
 }
 

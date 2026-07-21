@@ -1588,6 +1588,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@opencode-ai/sdk@npm:1.18.4":
+  version: 1.18.4
+  resolution: "@opencode-ai/sdk@npm:1.18.4"
+  dependencies:
+    cross-spawn: "npm:7.0.6"
+  checksum: 10c0/e20120041650316f8c085fa989dfc3ab03b6b4d34201dae6821db19b7077e9e07c1b945f57f11f6aa24a95f97fcf2d801717a1ae484afee11180e0baecff506b
+  languageName: node
+  linkType: hard
+
 "@oxc-project/types@npm:=0.137.0":
   version: 0.137.0
   resolution: "@oxc-project/types@npm:0.137.0"
@@ -2486,6 +2495,7 @@ __metadata:
     "@anthropic-ai/claude-agent-sdk": "npm:^0.3.197"
     "@anthropic-ai/sdk": "npm:^0.109.0"
     "@modelcontextprotocol/sdk": "npm:^1.29.0"
+    "@opencode-ai/sdk": "npm:1.18.4"
     "@runcell-science/contracts": "workspace:*"
     "@runcell-science/science-connectors": "workspace:*"
     "@types/better-sqlite3": "npm:^7.6.11"
@@ -4116,7 +4126,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"cross-spawn@npm:^7.0.1, cross-spawn@npm:^7.0.5, cross-spawn@npm:^7.0.6":
+"cross-spawn@npm:7.0.6, cross-spawn@npm:^7.0.1, cross-spawn@npm:^7.0.5, cross-spawn@npm:^7.0.6":
   version: 7.0.6
   resolution: "cross-spawn@npm:7.0.6"
   dependencies:

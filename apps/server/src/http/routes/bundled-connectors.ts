@@ -10,6 +10,7 @@ import {
   bundledScienceConnectorsService
 } from '../../services/bundled-science-connectors-service'
 import { McpManagementError } from '../../services/mcp-management-service'
+import { config } from '../../config/env'
 
 function sendError(reply: FastifyReply, error: unknown): FastifyReply {
   if (error instanceof McpManagementError) {
@@ -36,7 +37,10 @@ export const bundledConnectorsRoute: FastifyPluginAsync = async (server) => {
 
     try {
       const response = bundledScienceConnectorsService.listConnectors(query.cwd)
-      reply.send(response satisfies ListBundledScienceConnectorsResponse)
+      reply.send({
+        ...response,
+        ...(config.opencodeServerUrl ? { unsupportedSessionProviders: ['opencode' as const] } : {})
+      } satisfies ListBundledScienceConnectorsResponse)
     } catch (error) {
       sendError(reply, error)
     }

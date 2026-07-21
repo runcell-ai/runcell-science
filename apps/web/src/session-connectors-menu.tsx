@@ -18,6 +18,7 @@ export function SessionConnectorsMenu({ sessionId, provider, cwd, disabledServer
   const [disabled, setDisabled] = useState<string[]>(disabledServers)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [selectionUnsupported, setSelectionUnsupported] = useState(false)
   const containerRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -27,13 +28,16 @@ export function SessionConnectorsMenu({ sessionId, provider, cwd, disabledServer
   const loadServers = useCallback(async () => {
     setLoading(true)
     setError(null)
+    setSelectionUnsupported(false)
     try {
       const [response, bundledResponse] = await Promise.all([
         api.listMcpServers({ cwd }),
         api.listBundledConnectors({ cwd })
       ])
+      const unsupported = bundledResponse.unsupportedSessionProviders?.includes(provider) === true
+      setSelectionUnsupported(unsupported)
       setServers(response.servers.filter((server) => server.provider === provider && server.enabled))
-      setBundled(bundledResponse.connectors.filter((connector) => connector.enabled))
+      setBundled(unsupported ? [] : bundledResponse.connectors.filter((connector) => connector.enabled))
     } catch (err) {
       setError(toErrorMessage(err))
     } finally {
@@ -67,6 +71,7 @@ export function SessionConnectorsMenu({ sessionId, provider, cwd, disabledServer
   }, [open])
 
   const toggleServer = async (name: string) => {
+    if (selectionUnsupported) return
     const next = disabled.includes(name) ? disabled.filter((entry) => entry !== name) : [...disabled, name]
     const previous = disabled
     setDisabled(next)
@@ -102,12 +107,17 @@ export function SessionConnectorsMenu({ sessionId, provider, cwd, disabledServer
       {open ? (
         <div className="session-connectors-menu">
           <p className="session-connectors-hint">
-            Enabled for this session only.
-            {provider === 'codex' ? ' Changes apply from the next turn.' : ''}
+            {selectionUnsupported
+              ? 'Per-session connectors require a managed local OpenCode server. This external server uses its own connector configuration.'
+              : `Enabled for this session only.${
+                  provider === 'codex' || provider === 'grok' || provider === 'opencode'
+                    ? ' Changes apply from the next turn.'
+                    : ''
+                }`}
           </p>
           {error ? <p className="connectors-error">{error}</p> : null}
           {loading ? <p className="connectors-empty">Loading…</p> : null}
-          {!loading && items.length === 0 ? (
+          {!loading && !selectionUnsupported && items.length === 0 ? (
             <p className="connectors-empty">No {providerLabel(provider)} connectors configured.</p>
           ) : null}
           {items.map((item) => (

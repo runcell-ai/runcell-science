@@ -269,7 +269,7 @@ function App() {
               items={workspace.timelineItems}
               running={workspace.running}
               resolvingRequestId={workspace.resolvingRequestId}
-              onResolveRequest={(request, decision) => void workspace.resolveRequest(request, decision)}
+              onResolveRequest={(request, resolution) => void workspace.resolveRequest(request, resolution)}
               onOpenArtifact={workspace.openArtifact}
               renderNotebookExecution={(item) => <NotebookExecutionCard item={item} />}
             />

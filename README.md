@@ -23,15 +23,15 @@ Runcell Science is built around that reality:
 - **Open and customizable** — the workspace, server, UI components, scientific connectors, and artifact renderers are designed to be inspected, extended, and adapted.
 - **Interactive artifacts, not static attachments** — generated work can open beside the conversation, keep UI state, and become part of the next turn.
 - **Scientific skills and surfaces** — notebooks, chemistry artifacts, scientific connectors, generated files, and custom renderers are first-class parts of the workflow.
-- **Model and runtime neutral** — use Codex, Claude Code, and the model options exposed by those runtimes instead of being locked into one hosted assistant.
-- **Bring your existing subscription** — Runcell can work with the Codex or Claude Code setup you already use, including subscription-backed access where those tools support it.
+- **Model and runtime neutral** — use Codex, Claude Code, Grok Build, OpenCode, and the model options exposed by those runtimes instead of being locked into one hosted assistant.
+- **Bring your existing access** — Runcell can work with the CLI authentication or subscription-backed access supported by each runtime.
 - **A workspace, not just a chat box** — sessions, prompts, model choice, artifacts, connectors, skills, and worktree diffs live in one focused surface.
 
 ## What It Can Do
 
 | Capability | What it gives you |
 | --- | --- |
-| **Agent-backed research sessions** | Start and continue Codex or Claude Code-powered sessions from a browser UI, with streamed events and persistent history. |
+| **Agent-backed research sessions** | Start and continue Codex, Claude Code, Grok Build, or OpenCode-powered sessions from a browser UI, with streamed events and persistent history. |
 | **Interactive artifact panel** | Open generated files, draft artifacts, inspect outputs, and keep artifact-specific renderer state across session updates. |
 | **Notebook execution** | Work with Jupyter-backed notebooks and let agent workflows focus specific notebook files when needed. |
 | **Worktree diffs** | Review what changed in the project without leaving the research conversation. |
@@ -64,6 +64,7 @@ The current runtime integrations are:
 - **Codex** through a JSON-RPC app-server integration.
 - **Claude** through the Claude Agent SDK.
 - **Grok Build** through the Agent Client Protocol (`grok agent stdio`).
+- **OpenCode** through its version-matched v2 SDK, authenticated local HTTP server, and server-sent event stream.
 
 ## Getting Started
 
@@ -79,7 +80,7 @@ Then open the web app:
 http://127.0.0.1:27183
 ```
 
-Agent-backed sessions expect the corresponding Codex, Claude Code, or Grok CLI runtime to be installed and signed in (for Grok, run `grok login` once or set `XAI_API_KEY`).
+Agent-backed sessions expect the corresponding runtime to be installed and authenticated. For Grok, run `grok login` once or set `XAI_API_KEY`; for OpenCode, install OpenCode 1.18.4 or newer in the same major version and run `opencode auth login` for the model providers you use.
 
 Runcell Science also supports an Electron desktop app for end users who prefer a packaged application. Day-to-day development still runs through the web app and local server; the desktop app wraps those same web and server surfaces for distribution.
 

@@ -1,5 +1,11 @@
 import { useMemo, useReducer, useState } from 'react'
-import type { AgentArtifact, AgentPendingRequest, AgentProvider, RuntimeSseEvent } from '@runcell-science/contracts'
+import type {
+  AgentArtifact,
+  AgentPendingRequest,
+  AgentProvider,
+  ResolveAgentRequestRequest,
+  RuntimeSseEvent
+} from '@runcell-science/contracts'
 import { api, toErrorMessage } from '../lib/api'
 import { buildTimelineItems, isRunning } from '../lib/session-events'
 import { initialWorkspaceState, workspaceReducer } from '../lib/workspace-state'
@@ -145,7 +151,7 @@ export function useWorkspace() {
     }
   }
 
-  async function resolveRequest(request: AgentPendingRequest, decision: 'allow' | 'deny'): Promise<void> {
+  async function resolveRequest(request: AgentPendingRequest, resolution: ResolveAgentRequestRequest): Promise<void> {
     const sessionId = state.activeSessionId
     if (!sessionId) {
       return
@@ -154,7 +160,7 @@ export function useWorkspace() {
     setResolvingRequestId(request.id)
     dispatch({ type: 'error-cleared' })
     try {
-      await api.resolveRequest(sessionId, request.id, decision)
+      await api.resolveRequest(sessionId, request.id, resolution)
       const detail = await api.getSessionDetail(sessionId)
       dispatch({ type: 'detail-refetched', sessionId, detail })
     } catch (error) {

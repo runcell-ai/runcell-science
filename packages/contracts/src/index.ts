@@ -14,7 +14,7 @@ export interface ApiInfo {
   environment: string
 }
 
-export type AgentProvider = 'codex' | 'claude' | 'grok'
+export type AgentProvider = 'codex' | 'claude' | 'grok' | 'opencode'
 
 export type AgentRuntimeMode = 'full_access' | 'default'
 
@@ -465,6 +465,8 @@ export interface ListWorkspaceFilesResponse {
 export interface ResolveAgentRequestRequest {
   decision: 'allow' | 'deny' | 'answer'
   answer?: string
+  /** One string array per provider question; supports multiple choice answers. */
+  answers?: string[][]
 }
 
 export interface ResolveAgentRequestResponse {
@@ -686,6 +688,8 @@ export interface BundledScienceConnectorView {
 
 export interface ListBundledScienceConnectorsResponse {
   connectors: BundledScienceConnectorView[]
+  /** Providers whose external runtime cannot safely isolate per-session connector choices. */
+  unsupportedSessionProviders?: AgentProvider[]
 }
 
 export interface SetBundledScienceConnectorEnabledRequest {

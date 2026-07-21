@@ -15,6 +15,8 @@ export function providerLabel(provider: AgentProvider): string {
       return 'Claude Code'
     case 'grok':
       return 'Grok'
+    case 'opencode':
+      return 'OpenCode'
     default:
       return provider
   }

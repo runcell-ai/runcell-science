@@ -15,6 +15,7 @@ export type {
   AgentModelOption,
   AgentProviderOption,
   AgentRequestDecision,
+  AgentRequestResolution,
   AgentTimelineItem
 } from './types'
 export { StatusPill } from './status-pill'

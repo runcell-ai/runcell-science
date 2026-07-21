@@ -51,5 +51,6 @@ export type {
   ComposerSkill,
   AgentProviderOption,
   AgentRequestDecision,
+  AgentRequestResolution,
   AgentTimelineItem
 } from './components/agent'

@@ -30,15 +30,15 @@ function sendSkillsError(reply: FastifyReply, error: unknown): FastifyReply {
 export const skillsRoute: FastifyPluginAsync = async (server) => {
   server.get('/api/skills', async (request, reply) => {
     const query = request.query as { provider?: string; cwd?: string; sessionId?: string; refresh?: string }
-    if (query.provider === 'grok') {
-      // Grok exposes slash commands over ACP (available_commands_update) but
-      // the skills catalog is not wired for it yet; an empty list keeps the
-      // composer quiet instead of erroring on every grok session.
+    if (query.provider === 'grok' || query.provider === 'opencode') {
+      // These runtimes expose their own command/skill catalogs, but the
+      // shared skills management surface is not wired for them yet. An empty
+      // list keeps the composer quiet instead of producing a request error.
       return reply.send({ skills: [], warnings: [] } satisfies ListSkillsResponse)
     }
     if (query.provider !== 'codex' && query.provider !== 'claude') {
       return reply.code(400).send({
-        error: { code: 'bad_request', message: 'provider must be codex or claude.' }
+        error: { code: 'bad_request', message: 'provider must be codex, claude, grok, or opencode.' }
       } satisfies ApiErrorResponse)
     }
 

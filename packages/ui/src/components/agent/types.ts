@@ -6,6 +6,7 @@ import type {
   NotebookExecutionDetail,
   AgentPendingRequest,
   AgentProvider,
+  ResolveAgentRequestRequest,
   AgentModelOption as ContractAgentModelOption
 } from '@runcell-science/contracts'
 
@@ -26,6 +27,7 @@ export type AgentModelChoice = {
 export type AgentConnectionStatus = 'idle' | 'connecting' | 'live' | 'error'
 
 export type AgentRequestDecision = 'allow' | 'deny'
+export type AgentRequestResolution = ResolveAgentRequestRequest
 
 export type AgentTimelineItem = {
   id: string

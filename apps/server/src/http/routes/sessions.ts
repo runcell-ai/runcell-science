@@ -30,12 +30,13 @@ import type {
 } from '@runcell-science/contracts'
 
 import { RuntimeProviderError, runtimeRegistry, sessionEventBus } from '../../runtime'
+import { config } from '../../config/env'
 import { AgentSessionServiceError, agentSessionService } from '../../services'
 import { inferArtifactKindFromPath } from '../../services/agent-session-service'
 import { currentWorktreeDiff, isGitRepository } from '../../services/git-worktree-diff-service'
 import { classifyWorkspaceFile, listWorkspaceFiles } from '../../services/workspace-files-service'
 
-const agentProviders: AgentProvider[] = ['codex', 'claude', 'grok']
+const agentProviders: AgentProvider[] = ['codex', 'claude', 'grok', 'opencode']
 const runtimeModes: AgentRuntimeMode[] = ['full_access', 'default']
 const localArtifactKinds: Exclude<AgentArtifactKind, 'url'>[] = ['image', 'pdf', 'markdown', 'html', 'custom']
 
@@ -279,7 +280,7 @@ function parseCreateSessionRequest(body: unknown): CreateAgentSessionRequest | A
   if (!isAgentProvider(body.provider)) {
     return {
       code: 'bad_request',
-      message: 'provider must be one of "codex", "claude", or "grok".'
+      message: 'provider must be one of "codex", "claude", "grok", or "opencode".'
     }
   }
 
@@ -366,9 +367,29 @@ function parseResolveRequest(body: unknown): ResolveAgentRequestRequest | ApiErr
     }
   }
 
+  if (
+    body.answers !== undefined &&
+    (!Array.isArray(body.answers) ||
+      body.answers.length === 0 ||
+      body.answers.length > 10 ||
+      body.answers.some(
+        (answers) =>
+          !Array.isArray(answers) ||
+          answers.length === 0 ||
+          answers.length > 20 ||
+          answers.some((answer) => typeof answer !== 'string' || answer.trim().length === 0 || answer.length > 10_000)
+      ))
+  ) {
+    return {
+      code: 'bad_request',
+      message: 'answers must contain 1-10 non-empty string arrays with at most 20 answers each.'
+    }
+  }
+
   return {
     decision: body.decision,
-    ...(body.answer !== undefined ? { answer: body.answer } : {})
+    ...(body.answer !== undefined ? { answer: body.answer } : {}),
+    ...(body.answers !== undefined ? { answers: body.answers as string[][] } : {})
   }
 }
 
@@ -1108,9 +1129,20 @@ export const sessionsRoute: FastifyPluginAsync = async (server) => {
           error: { code: 'not_found', message: 'Session was not found.' }
         } satisfies ApiErrorResponse)
       }
-      // Codex and Grok apply the selection by disposing and respawning their
-      // agent process; doing that mid-turn would strand the running turn.
-      const resetOnConnectorChange = current.session.provider === 'codex' || current.session.provider === 'grok'
+      if (current.session.provider === 'opencode' && config.opencodeServerUrl) {
+        return reply.code(409).send({
+          error: {
+            code: 'session_connectors_unsupported',
+            message: 'Per-session connectors require a managed local OpenCode server.'
+          }
+        } satisfies ApiErrorResponse)
+      }
+      // Long-lived runtimes apply the selection by disposing and respawning
+      // their process/server; doing that mid-turn would strand the running turn.
+      const resetOnConnectorChange =
+        current.session.provider === 'codex' ||
+        current.session.provider === 'grok' ||
+        current.session.provider === 'opencode'
       const hasRunningTurn = current.turns.some((turn) => turn.status === 'running')
       if (resetOnConnectorChange && hasRunningTurn) {
         return reply.code(409).send({
@@ -1123,9 +1155,10 @@ export const sessionsRoute: FastifyPluginAsync = async (server) => {
 
       const detail = agentSessionService.updateDisabledMcpServers(params.sessionId, disabledServers)
       // Codex keeps a long-lived app-server per session whose overrides are
-      // set at spawn; Grok's ACP session receives mcpServers only at
-      // session/new|load. Drop the runtime state so the next turn respawns
-      // and resumes with the new selection. Claude injects per turn, no reset.
+      // set at spawn; Grok receives MCP servers during ACP setup; OpenCode
+      // adds them to its owned sidecar during startup. Drop runtime state so
+      // the next turn respawns and resumes with the new selection. Claude
+      // injects per turn and does not need a reset.
       if (resetOnConnectorChange) {
         runtimeRegistry.resetSession(detail.session)
       }

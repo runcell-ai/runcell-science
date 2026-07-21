@@ -36,6 +36,11 @@ export interface ServerConfig {
   claudeAllowDangerouslySkipPermissions: boolean
   grokBinaryPath: string
   grokDefaultModel: string | null
+  opencodeBinaryPath: string
+  opencodeDefaultModel: string | null
+  opencodeServerUrl: string | null
+  opencodeServerUsername: string
+  opencodeServerPassword: string | null
 }
 
 function defaultServerRoot(): string {
@@ -153,7 +158,12 @@ export const config: ServerConfig = {
     true
   ),
   grokBinaryPath: process.env.GROK_BINARY_PATH?.trim() || 'grok',
-  grokDefaultModel: process.env.GROK_DEFAULT_MODEL?.trim() || null
+  grokDefaultModel: process.env.GROK_DEFAULT_MODEL?.trim() || null,
+  opencodeBinaryPath: process.env.OPENCODE_BINARY_PATH?.trim() || 'opencode',
+  opencodeDefaultModel: process.env.OPENCODE_DEFAULT_MODEL?.trim() || null,
+  opencodeServerUrl: process.env.OPENCODE_SERVER_URL?.trim() || null,
+  opencodeServerUsername: process.env.OPENCODE_SERVER_USERNAME?.trim() || 'opencode',
+  opencodeServerPassword: process.env.OPENCODE_SERVER_PASSWORD?.trim() || null
 }
 
 export function ensureRuntimeDirs(): void {
