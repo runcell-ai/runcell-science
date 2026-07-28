@@ -1,8 +1,12 @@
 import { config } from '../../../config/env'
-import { sanitizedProcessEnv } from '../../env-utils'
+import {
+  agentProviderConfigService,
+  requireAgentProviderExecutable
+} from '../../../services/agent-provider-config-service'
+import { GenerationBoundProbeCache, type CancelableProbe } from '../../generation-bound-probe-cache'
 import { GrokAcpClient } from './acp-client'
 import type { AcpInitializeResponse, AcpModelInfo, AcpSessionSetupResponse } from './acp-types'
-import { resolveGrokAuthMethodId } from './grok-runtime'
+import { resolveGrokAuthMethodId } from './grok-auth'
 
 export interface GrokModelCatalog {
   currentModelId: string | null
@@ -14,8 +18,7 @@ export interface GrokModelCatalog {
 // concurrent callers share one in-flight probe.
 const CATALOG_CACHE_TTL_MS = 5 * 60_000
 
-let cachedCatalog: { catalog: GrokModelCatalog; fetchedAt: number } | null = null
-let inflightProbe: Promise<GrokModelCatalog> | null = null
+const catalogCache = new GenerationBoundProbeCache<GrokModelCatalog>()
 
 /**
  * Grok has no standalone model-list RPC; the catalog comes from the
@@ -26,36 +29,25 @@ let inflightProbe: Promise<GrokModelCatalog> | null = null
  * must not stall the catalog for multiples of the timeout.
  */
 export async function fetchGrokModelCatalog(timeoutMs: number): Promise<GrokModelCatalog> {
-  if (cachedCatalog && Date.now() - cachedCatalog.fetchedAt < CATALOG_CACHE_TTL_MS) {
-    return cachedCatalog.catalog
-  }
-
-  if (!inflightProbe) {
-    inflightProbe = probeGrokModelCatalog(timeoutMs)
-      .then((catalog) => {
-        cachedCatalog = { catalog, fetchedAt: Date.now() }
-        return catalog
-      })
-      .finally(() => {
-        inflightProbe = null
-      })
-  }
-  return inflightProbe
+  return catalogCache.get(
+    CATALOG_CACHE_TTL_MS,
+    () => createGrokModelCatalogProbe(timeoutMs)
+  )
 }
 
 /** Test hook: reset module-level cache state. */
 export function clearGrokModelCatalogCache(): void {
-  cachedCatalog = null
-  inflightProbe = null
+  catalogCache.clear()
 }
 
-async function probeGrokModelCatalog(timeoutMs: number): Promise<GrokModelCatalog> {
+function createGrokModelCatalogProbe(timeoutMs: number): CancelableProbe<GrokModelCatalog> {
   const deadline = Date.now() + timeoutMs
   const remaining = () => Math.max(1, deadline - Date.now())
+  const providerConfig = agentProviderConfigService.resolve('grok')
 
-  const env = { ...sanitizedProcessEnv(), GROK_OAUTH2_REFERRER: 'open-science' }
+  const env = { ...providerConfig.env, GROK_OAUTH2_REFERRER: 'open-science' }
   const client = new GrokAcpClient({
-    binaryPath: config.grokBinaryPath,
+    binaryPath: requireAgentProviderExecutable(providerConfig),
     cwd: config.agentDefaultCwd,
     env
   })
@@ -63,23 +55,36 @@ async function probeGrokModelCatalog(timeoutMs: number): Promise<GrokModelCatalo
   // an unhandled 'error' emit would crash the process.
   client.on('error', () => {})
 
-  try {
-    await client.request<AcpInitializeResponse>('initialize', {
-      protocolVersion: 1,
-      clientInfo: { name: 'open_science', title: 'Runcell Science', version: '0.1.0' },
-      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false } }
-    }, remaining())
-    await client.request('authenticate', { methodId: resolveGrokAuthMethodId(env) }, remaining())
-    const setup = await client.request<AcpSessionSetupResponse>('session/new', {
-      cwd: config.agentDefaultCwd,
-      mcpServers: []
-    }, remaining())
+  const promise = (async () => {
+    try {
+      await client.request<AcpInitializeResponse>('initialize', {
+        protocolVersion: 1,
+        clientInfo: { name: 'open_science', title: 'Runcell Science', version: '0.1.0' },
+        clientCapabilities: { fs: { readTextFile: false, writeTextFile: false } }
+      }, remaining())
+      await client.request('authenticate', { methodId: resolveGrokAuthMethodId(env) }, remaining())
+      const setup = await client.request<AcpSessionSetupResponse>('session/new', {
+        cwd: config.agentDefaultCwd,
+        mcpServers: []
+      }, remaining())
 
-    return {
-      currentModelId: setup.models?.currentModelId?.trim() || null,
-      models: setup.models?.availableModels ?? []
+      return {
+        currentModelId: setup.models?.currentModelId?.trim() || null,
+        models: setup.models?.availableModels ?? []
+      }
+    } finally {
+      client.dispose()
     }
-  } finally {
-    client.dispose()
+  })()
+
+  return {
+    promise,
+    cancel: () => client.dispose()
   }
 }
+
+agentProviderConfigService.onChange((instanceId) => {
+  if (instanceId === 'grok') {
+    clearGrokModelCatalogCache()
+  }
+})

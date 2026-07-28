@@ -3,6 +3,7 @@ import type { AgentModelOption, ListAgentModelsResponse } from '@runcell-science
 import { fetchClaudeSupportedModels } from '../runtime/providers/claude/claude-models'
 import type { ModelListResponse } from '../runtime/providers/codex/generated/v2/ModelListResponse'
 import { fetchGrokModelCatalog } from '../runtime/providers/grok/grok-models'
+import { sanitizeProviderOutput } from '../runtime/provider-output-sanitizer'
 import { mcpManagementService } from './mcp-management-service'
 
 const codexDefaultOption: AgentModelOption = {
@@ -48,7 +49,7 @@ function defaultLabel(providerDefault: string | null | undefined): string {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
+  return sanitizeProviderOutput(error)
 }
 
 function dedupeOptions(options: AgentModelOption[]): AgentModelOption[] {

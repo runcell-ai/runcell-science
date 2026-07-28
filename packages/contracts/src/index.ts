@@ -31,6 +31,119 @@ export interface ListAgentModelsResponse {
   warnings: string[]
 }
 
+/**
+ * Management-plane identifiers are open slugs so adding a compiled-in driver
+ * does not require changing the wire schema. Session execution remains the
+ * narrower AgentProvider union until a runtime is registered for that driver.
+ */
+export type AgentProviderDriverKind = string
+export type AgentProviderInstanceId = string
+
+export type AgentProviderAvailability =
+  | 'checking'
+  | 'ready'
+  | 'needs_auth'
+  | 'not_installed'
+  | 'error'
+
+export type AgentProviderAuthStatus = 'authenticated' | 'unauthenticated' | 'unknown'
+export type AgentProviderRefreshState = 'idle' | 'refreshing'
+export type AgentProviderConfigSource = 'persisted' | 'environment' | 'discovered' | 'default'
+export type AgentProviderLoginMode = 'device_code' | 'local_process' | 'manual_only'
+
+export interface AgentProviderInstallInstruction {
+  platform: 'macos' | 'linux' | 'windows' | 'all'
+  label: string
+  command: string | null
+}
+
+export interface AgentProviderSnapshot {
+  instanceId: AgentProviderInstanceId
+  driver: AgentProviderDriverKind
+  displayName: string
+  installed: boolean
+  version: string | null
+  configuredCommand: string
+  resolvedExecutablePath: string | null
+  configHome: string | null
+  commandSource: AgentProviderConfigSource
+  homeSource: AgentProviderConfigSource | null
+  availability: AgentProviderAvailability
+  auth: {
+    status: AgentProviderAuthStatus
+    label?: string
+  }
+  refreshState: AgentProviderRefreshState
+  checkedAt: string | null
+  lastSuccessfulAt: string | null
+  stale: boolean
+  message: string | null
+  capabilities: {
+    login: boolean
+    localSetup: boolean
+    loginMode: AgentProviderLoginMode
+  }
+  setup: {
+    loginCommand: string | null
+    docsUrl: string | null
+    installInstructions: AgentProviderInstallInstruction[]
+  }
+}
+
+export interface ListAgentProviderInstancesResponse {
+  instances: AgentProviderSnapshot[]
+}
+
+export interface AgentProviderControlTokenResponse {
+  token: string
+}
+
+export interface AgentProviderSetupInput {
+  /**
+   * undefined keeps the current persisted value, null clears it, and a string
+   * replaces it. Binary overrides must be absolute executable file paths.
+   */
+  binaryPathOverride?: string | null
+  /** Same merge semantics as binaryPathOverride. */
+  configHomeOverride?: string | null
+}
+
+export type TestAgentProviderSetupRequest = AgentProviderSetupInput
+export type UpdateAgentProviderSetupRequest = AgentProviderSetupInput
+
+export interface AgentProviderSnapshotResponse {
+  instance: AgentProviderSnapshot
+}
+
+export type AgentProviderLoginAttemptStatus =
+  | 'starting'
+  | 'awaiting_user'
+  | 'succeeded'
+  | 'failed'
+  | 'expired'
+  | 'cancelled'
+
+export type AgentProviderLoginFlow =
+  | { kind: 'browser'; url: string }
+  | { kind: 'device_code'; verificationUrl: string; userCode: string }
+  | { kind: 'external_process'; message: string }
+  | { kind: 'manual'; command: string; message: string }
+
+export interface AgentProviderLoginAttempt {
+  id: string
+  instanceId: AgentProviderInstanceId
+  status: AgentProviderLoginAttemptStatus
+  flow: AgentProviderLoginFlow | null
+  startedAt: string
+  expiresAt: string
+  finishedAt: string | null
+  message: string | null
+}
+
+export interface AgentProviderLoginAttemptResponse {
+  attempt: AgentProviderLoginAttempt
+}
+
 export type AgentSessionStatus =
   | 'pending_activation'
   | 'ready'

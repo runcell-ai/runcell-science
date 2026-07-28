@@ -1,0 +1,116 @@
+{
+  "revision": "A1",
+  "scope": "Agent Provider Stage A: contracts, persisted setup resolution, probes, registry, protected control API, and runtime/model/MCP/skills config integration",
+  "workspace": "/Users/observedobserver/Documents/GitHub/open-science",
+  "baseCommit": "7dd7cae0c2603360e9d285f16987a4862e30cbba",
+  "aggregateSha256": "b49cb0cebb694fe55ed184ba13e99c1c24cb9ad72671c558ad0addbada2fdbe4",
+  "hashAlgorithm": "SHA-256 over sorted entries encoded as path + NUL + fileSha256 + LF; this manifest is excluded",
+  "verification": [
+    {
+      "command": "yarn typecheck",
+      "result": "passed"
+    },
+    {
+      "command": "yarn --cwd apps/server test",
+      "result": "96 passed, 0 failed, 1 pre-existing environment-dependent Jupyter test skipped"
+    },
+    {
+      "command": "isolated temp-DB server smoke on 127.0.0.1:27984",
+      "result": "Grok Build, Codex, and Claude Code installed+authenticated; token and Codex refresh endpoints returned 200"
+    }
+  ],
+  "files": [
+    {
+      "path": "apps/server/src/db/migrations/011_agent_provider_instance_settings.sql",
+      "sha256": "fe906e9c66e815abfb2147076017bf72ec8e2dccfd5b95ea4fba9488ae01bf07"
+    },
+    {
+      "path": "apps/server/src/http/agent-provider-control-guard.ts",
+      "sha256": "313b4985a16ca7ce0dc2e0af773bfd625687eeeeadd1c1eeb1ebd8b85dc8f2bd"
+    },
+    {
+      "path": "apps/server/src/http/index.ts",
+      "sha256": "d6fb623d67d4e1c74db35e01ac49e40965948f3134a51576b2a7b1d5c902658f"
+    },
+    {
+      "path": "apps/server/src/http/routes/agent-providers.ts",
+      "sha256": "0810ab288fe6bf5222d17e7e72826f9fb6de3cb048a8e934b0c1d65813c7afd5"
+    },
+    {
+      "path": "apps/server/src/index.ts",
+      "sha256": "2c9ebeeb840ccdc0af236f0dae337eb52df1d1101151ff0fc7c2c1c9d4e2c77c"
+    },
+    {
+      "path": "apps/server/src/runtime/providers/claude/claude-models.ts",
+      "sha256": "5d40a6e1f05b291fac461c0ee669f85884c40a1cf7b4c9a1a0dafbfb1a43584f"
+    },
+    {
+      "path": "apps/server/src/runtime/providers/claude/claude-runtime.ts",
+      "sha256": "886fe04894f83f0b1d2c785b7e45dd9f1e984f4b5e4da096010146e34f7dc7e7"
+    },
+    {
+      "path": "apps/server/src/runtime/providers/codex/capability-probe.ts",
+      "sha256": "e4b5bc02d555a526395b4934c31ff04358a5bded919f8c40dbce5a327fd36b13"
+    },
+    {
+      "path": "apps/server/src/runtime/providers/codex/codex-runtime.ts",
+      "sha256": "d9ea9ca593014503e212b53bc5c945a9fd57db2375fbc2a6e84563a6690c3df0"
+    },
+    {
+      "path": "apps/server/src/runtime/providers/grok/grok-models.ts",
+      "sha256": "b1804628d49edeb958f5b396e78f7d0590ba8065f4eb071096235cb22fe0f3e7"
+    },
+    {
+      "path": "apps/server/src/runtime/providers/grok/grok-runtime.ts",
+      "sha256": "797dffd011c7a2b30d3c672c87e6fedb34ba061f544ba80546e1e983f285d4e0"
+    },
+    {
+      "path": "apps/server/src/services/agent-provider-config-service.ts",
+      "sha256": "f1ef5654a1850066e18c84c9dc45bc152dce7b783d8e321a93770b2eba063a7b"
+    },
+    {
+      "path": "apps/server/src/services/agent-provider-drivers.ts",
+      "sha256": "d043a1ca9862d6a74e774e15267ab3f262b9b141347e38887f7524d49aebc042"
+    },
+    {
+      "path": "apps/server/src/services/agent-provider-registry.ts",
+      "sha256": "2666465ae9b203644eba19fbbe605576ab700b3ea3b1c3b25e79f9443acf5f0b"
+    },
+    {
+      "path": "apps/server/src/services/codex-management-client-service.ts",
+      "sha256": "454c92b77bfd7f7e702cc6dcaaab5966bae7d3c8c4ed66ac7a7f762df9bd9fd4"
+    },
+    {
+      "path": "apps/server/src/services/mcp-management-service.ts",
+      "sha256": "c127ec15654070c0e452103f2d52e0a267442c7eed1a74b0a90462232b2bac16"
+    },
+    {
+      "path": "apps/server/src/services/skills-service.ts",
+      "sha256": "e3c799b83ce24e4b2fcdbb954ff671f03f16d8899bb8bde5a518ef773880c416"
+    },
+    {
+      "path": "apps/server/test/agent-provider-config-service.test.ts",
+      "sha256": "90395b557ac637c5998ff9f830a7ed645f7ea67731cbb6cdf5af5b4756a19304"
+    },
+    {
+      "path": "apps/server/test/agent-provider-drivers.test.ts",
+      "sha256": "ec445f90874606e17acdcc93d6136b30eba9d2ee97744977db318c471150c03c"
+    },
+    {
+      "path": "apps/server/test/agent-provider-registry.test.ts",
+      "sha256": "27c83e52e730cda55dfc56303d88e0c9d7963b06a74cdc7ee3f126129be542b3"
+    },
+    {
+      "path": "apps/server/test/agent-provider-route.test.ts",
+      "sha256": "31df5d07a5a0724de7c0646d37ff798cd2f31a10a621bd330f150323b2d2b465"
+    },
+    {
+      "path": "docs/agent-provider-architecture-research.md",
+      "sha256": "759e855609b72a6cc5811d8416323b009612c771b2600bc9f6520c66d0bf24c2"
+    },
+    {
+      "path": "packages/contracts/src/index.ts",
+      "sha256": "008e1afdcaecf0829edbd2b462d3aae36d2ae27adc24df2cb38be99477b0775d"
+    }
+  ]
+}

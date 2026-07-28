@@ -1,6 +1,13 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import readline from 'node:readline'
+
+import { readBoundedLines } from '../../bounded-line-reader'
+import { sanitizeProviderOutput } from '../../provider-output-sanitizer'
+import { spawnProviderProcess } from '../../provider-process-launch'
+import { ProviderRpcError } from '../../provider-rpc-error'
+
+const MAX_TRANSPORT_MESSAGE_BYTES = 8 * 1024 * 1024
+const MAX_TRANSPORT_STDERR_LINE_BYTES = 64 * 1024
 
 export interface GrokAcpMessage {
   id?: number | string
@@ -18,6 +25,7 @@ export interface GrokAcpClientOptions {
   binaryPath: string
   cwd?: string
   env?: NodeJS.ProcessEnv
+  platform?: NodeJS.Platform
 }
 
 interface PendingRequest {
@@ -32,30 +40,41 @@ interface PendingRequest {
  */
 export class GrokAcpClient extends EventEmitter {
   private readonly child: ChildProcessWithoutNullStreams
+  private readonly env: NodeJS.ProcessEnv
   private readonly pendingRequests = new Map<number, PendingRequest>()
   private readonly stderrTail: string[] = []
   private nextRequestId = 1
   private disposed = false
+  private transportFailed = false
 
   constructor(options: GrokAcpClientOptions) {
     super()
-    this.child = spawn(options.binaryPath, ['agent', 'stdio'], {
+    this.env = options.env ?? {}
+    this.child = spawnProviderProcess(options.binaryPath, ['agent', 'stdio'], {
       cwd: options.cwd,
       env: options.env,
-      stdio: ['pipe', 'pipe', 'pipe']
+      windowsHide: true
     })
 
-    const stdout = readline.createInterface({ input: this.child.stdout })
-    stdout.on('line', (line) => this.handleStdoutLine(line))
-
-    const stderr = readline.createInterface({ input: this.child.stderr })
-    stderr.on('line', (line) => {
-      this.stderrTail.push(line)
-      if (this.stderrTail.length > 10) {
-        this.stderrTail.shift()
-      }
-      this.emit('stderr', line)
-    })
+    readBoundedLines(
+      this.child.stdout,
+      MAX_TRANSPORT_MESSAGE_BYTES,
+      (line) => this.handleStdoutLine(line),
+      () => this.failTransport('Grok ACP response exceeded the transport output limit.')
+    )
+    readBoundedLines(
+      this.child.stderr,
+      MAX_TRANSPORT_STDERR_LINE_BYTES,
+      (line) => {
+        const sanitized = sanitizeProviderOutput(line, this.env, 4_096)
+        this.stderrTail.push(sanitized)
+        if (this.stderrTail.length > 10) {
+          this.stderrTail.shift()
+        }
+        this.emit('stderr', sanitized)
+      },
+      () => this.failTransport('Grok ACP stderr exceeded the transport output limit.')
+    )
 
     this.child.on('error', (error) => {
       this.rejectAll(error)
@@ -162,7 +181,7 @@ export class GrokAcpClient extends EventEmitter {
     try {
       message = JSON.parse(line) as GrokAcpMessage
     } catch (error) {
-      this.emit('error', new Error(`Failed to parse Grok agent JSON line: ${line}`, { cause: error }))
+      this.emit('error', new Error('Failed to parse a Grok agent JSON response.', { cause: error }))
       return
     }
 
@@ -175,7 +194,12 @@ export class GrokAcpClient extends EventEmitter {
 
       this.pendingRequests.delete(id)
       if (message.error) {
-        pending.reject(new Error(message.error.message))
+        pending.reject(
+          new ProviderRpcError(
+            sanitizeProviderOutput(message.error.message, this.env),
+            message.error.code
+          )
+        )
       } else {
         pending.resolve(message.result)
       }
@@ -197,5 +221,16 @@ export class GrokAcpClient extends EventEmitter {
       pending.reject(error)
     }
     this.pendingRequests.clear()
+  }
+
+  private failTransport(message: string): void {
+    if (this.transportFailed) {
+      return
+    }
+    this.transportFailed = true
+    const error = new Error(message)
+    this.rejectAll(error)
+    this.child.kill('SIGTERM')
+    this.emit('error', error)
   }
 }

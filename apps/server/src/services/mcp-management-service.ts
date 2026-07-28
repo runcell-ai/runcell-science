@@ -1,8 +1,6 @@
-import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { promisify } from 'node:util'
 
 import type {
   AgentProvider,
@@ -16,13 +14,15 @@ import type {
   McpTransport
 } from '@runcell-science/contracts'
 
-import { config } from '../config/env'
-import { sanitizedProcessEnv } from '../runtime/env-utils'
-import { CodexJsonRpcClient } from '../runtime/providers/codex/json-rpc-client'
+import { runProviderProcess } from '../runtime/provider-process-launch'
+import { sanitizeProviderOutput } from '../runtime/provider-output-sanitizer'
 import type { ListMcpServerStatusResponse } from '../runtime/providers/codex/generated/v2/ListMcpServerStatusResponse'
 import type { ConfigReadResponse } from '../runtime/providers/codex/generated/v2/ConfigReadResponse'
-
-const execFileAsync = promisify(execFile)
+import {
+  agentProviderConfigService,
+  requireAgentProviderExecutable
+} from './agent-provider-config-service'
+import { codexManagementClientService } from './codex-management-client-service'
 
 const INIT_TIMEOUT_MS = 60_000
 // mcpServerStatus/list blocks until all configured servers finish their
@@ -139,17 +139,34 @@ function toRawEntry(value: unknown): RawMcpServerEntry | null {
  * broken provider never blanks the whole inventory (fallback principle).
  */
 export class McpManagementService {
-  private client: CodexJsonRpcClient | null = null
-  private clientInit: Promise<CodexJsonRpcClient> | null = null
   private readonly startupStatus = new Map<string, CodexStartupStatus>()
   private statusCache: { at: number; entries: Map<string, CodexStatusEntry> } | null = null
+
+  constructor() {
+    codexManagementClientService.onNotification((message) => {
+      const m = message as {
+        method?: string
+        params?: { name?: string; status?: string; error?: string | null }
+      }
+      if (m.method === 'mcpServer/startupStatus/updated' && m.params?.name && m.params.status) {
+        this.startupStatus.set(m.params.name, {
+          state: m.params.status,
+          error: m.params.error ? sanitizeProviderOutput(m.params.error) : null
+        })
+      }
+    })
+    codexManagementClientService.onExit(() => {
+      this.statusCache = null
+      this.startupStatus.clear()
+    })
+  }
 
   async listServers(input: { cwd?: string; refresh?: boolean }): Promise<ListMcpServersResponse> {
     const warnings: string[] = []
     const servers: McpServerView[] = []
 
     const codexServers = await this.listCodexServers(input.refresh === true).catch((error) => {
-      warnings.push(`Codex inventory unavailable: ${error instanceof Error ? error.message : String(error)}`)
+      warnings.push(`CodeX inventory unavailable: ${sanitizeProviderOutput(error)}`)
       return [] as McpServerView[]
     })
     servers.push(...codexServers)
@@ -160,9 +177,8 @@ export class McpManagementService {
   }
 
   dispose(): void {
-    this.client?.dispose()
-    this.client = null
-    this.clientInit = null
+    this.statusCache = null
+    this.startupStatus.clear()
   }
 
   // --------------------------------------------------------------- writes --
@@ -283,7 +299,7 @@ export class McpManagementService {
           await this.addServer({ provider, name, config: raw as McpServerConfigInput })
           result.added.push(key)
         } catch (error) {
-          result.errors.push(`${key}: ${error instanceof Error ? error.message : String(error)}`)
+          result.errors.push(`${key}: ${sanitizeProviderOutput(error)}`)
         }
       }
     }
@@ -296,84 +312,32 @@ export class McpManagementService {
   }
 
   private async execClaudeMcp(args: string[], cwd?: string): Promise<void> {
-    try {
-      await execFileAsync(config.claudeCodeBinaryPath, ['mcp', ...args], {
+    const resolved = agentProviderConfigService.resolve('claude')
+    const result = await runProviderProcess(
+      requireAgentProviderExecutable(resolved),
+      ['mcp', ...args],
+      {
         cwd,
-        env: {
-          ...sanitizedProcessEnv(),
-          ...(config.claudeConfigDir ? { CLAUDE_CONFIG_DIR: config.claudeConfigDir } : {})
-        },
-        timeout: 30_000
-      })
-    } catch (error) {
-      const stderr = (error as { stderr?: string }).stderr
-      const message = typeof stderr === 'string' && stderr.trim().length > 0
-        ? stderr.trim().split('\n').slice(-1)[0]
-        : error instanceof Error
-          ? error.message
-          : String(error)
+        env: resolved.env,
+        timeoutMs: 30_000,
+        maxOutputBytes: 256 * 1024
+      }
+    )
+    if (result.exitCode !== 0) {
+      const detail = result.timedOut
+        ? 'command timed out'
+        : result.stderr.trim().split(/\r?\n/).filter(Boolean).at(-1) ??
+          result.errorCode ??
+          'command failed'
+      const message = sanitizeProviderOutput(detail, resolved.env)
       throw new McpManagementError('claude_cli_failed', `claude mcp ${args[0]} failed: ${message}`, 502)
     }
   }
 
   // ---------------------------------------------------------------- codex --
 
-  private async ensureCodexClient(): Promise<CodexJsonRpcClient> {
-    if (this.client) {
-      return this.client
-    }
-    if (this.clientInit) {
-      return this.clientInit
-    }
-
-    this.clientInit = (async () => {
-      const client = new CodexJsonRpcClient({
-        binaryPath: config.codexBinaryPath,
-        env: {
-          ...sanitizedProcessEnv(),
-          ...(config.codexHome ? { CODEX_HOME: config.codexHome } : {})
-        }
-      })
-      client.on('error', () => {})
-      client.on('notification', (message) => {
-        const m = message as { method?: string; params?: { name?: string; status?: string; error?: string | null } }
-        if (m.method === 'mcpServer/startupStatus/updated' && m.params?.name && m.params.status) {
-          this.startupStatus.set(m.params.name, {
-            state: m.params.status,
-            error: m.params.error ?? null
-          })
-        }
-      })
-      client.on('exit', () => {
-        if (this.client === client) {
-          this.client = null
-          this.statusCache = null
-        }
-      })
-
-      await client.request(
-        'initialize',
-        {
-          clientInfo: { name: 'open_science_mcp_admin', title: 'Runcell Science', version: '0.1.0' },
-          capabilities: { experimentalApi: true }
-        },
-        INIT_TIMEOUT_MS
-      )
-      client.notify('initialized', {})
-      this.client = client
-      return client
-    })()
-
-    try {
-      return await this.clientInit
-    } finally {
-      this.clientInit = null
-    }
-  }
-
   async codexRequest<T>(method: string, params: unknown, timeoutMs: number = CONFIG_TIMEOUT_MS): Promise<T> {
-    const client = await this.ensureCodexClient()
-    return client.request<T>(method, params, timeoutMs)
+    return codexManagementClientService.request<T>(method, params, timeoutMs)
   }
 
   invalidateCodexStatus(): void {
@@ -433,7 +397,7 @@ export class McpManagementService {
     try {
       statusEntries = await this.readCodexStatusEntries(refresh)
     } catch (error) {
-      statusError = error instanceof Error ? error.message : String(error)
+      statusError = sanitizeProviderOutput(error)
     }
 
     const views: McpServerView[] = []
@@ -522,8 +486,9 @@ export class McpManagementService {
   }
 
   private claudeConfigJsonPath(): string {
-    return config.claudeConfigDir
-      ? path.join(config.claudeConfigDir, '.claude.json')
+    const resolved = agentProviderConfigService.resolve('claude')
+    return resolved.configHome
+      ? path.join(resolved.configHome, '.claude.json')
       : path.join(os.homedir(), '.claude.json')
   }
 
@@ -537,7 +502,7 @@ export class McpManagementService {
         claudeJson = JSON.parse(fs.readFileSync(configPath, 'utf8')) as Record<string, unknown>
       }
     } catch (error) {
-      warnings.push(`Failed to read ${configPath}: ${error instanceof Error ? error.message : String(error)}`)
+      warnings.push(`Failed to read ${configPath}: ${sanitizeProviderOutput(error)}`)
     }
 
     if (claudeJson) {
@@ -562,7 +527,7 @@ export class McpManagementService {
           views.push(...this.claudeEntriesFrom(parsed['mcpServers'], 'project', mcpJsonPath))
         }
       } catch (error) {
-        warnings.push(`Failed to read ${mcpJsonPath}: ${error instanceof Error ? error.message : String(error)}`)
+        warnings.push(`Failed to read ${mcpJsonPath}: ${sanitizeProviderOutput(error)}`)
       }
     }
 

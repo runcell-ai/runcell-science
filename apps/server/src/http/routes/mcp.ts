@@ -12,6 +12,7 @@ import type {
   SetMcpServerEnabledRequest
 } from '@runcell-science/contracts'
 
+import { sanitizeProviderOutput } from '../../runtime/provider-output-sanitizer'
 import { McpManagementError, mcpManagementService } from '../../services/mcp-management-service'
 
 function sendMcpError(reply: FastifyReply, error: unknown): FastifyReply {
@@ -23,7 +24,7 @@ function sendMcpError(reply: FastifyReply, error: unknown): FastifyReply {
   return reply.code(502).send({
     error: {
       code: 'mcp_operation_failed',
-      message: error instanceof Error ? error.message : String(error)
+      message: sanitizeProviderOutput(error)
     }
   } satisfies ApiErrorResponse)
 }

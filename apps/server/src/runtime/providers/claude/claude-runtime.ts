@@ -10,6 +10,10 @@ import {
 
 import { config } from '../../../config/env'
 import { agentSessionService } from '../../../services'
+import {
+  agentProviderConfigService,
+  requireAgentProviderExecutable
+} from '../../../services/agent-provider-config-service'
 import { bundledScienceConnectorsService } from '../../../services/bundled-science-connectors-service'
 import { mcpManagementService } from '../../../services/mcp-management-service'
 import type {
@@ -20,7 +24,7 @@ import type {
   RuntimeStartTurnInput
 } from '../../code-agent-provider'
 import { RuntimeProviderError } from '../../code-agent-provider'
-import { agentIntegrationEnv, sanitizedProcessEnv } from '../../env-utils'
+import { agentIntegrationEnv } from '../../env-utils'
 import { notebookAgentGuidance } from '../../notebook-guidance'
 
 interface ClaudeActiveTurn {
@@ -123,6 +127,7 @@ export class ClaudeRuntime implements CodeAgentProviderRuntime {
     prompt: string,
     inputOptions: Pick<Options, 'cwd' | 'model' | 'resume' | 'title'> & { disabledMcpServers?: string[] }
   ): Promise<void> {
+    const providerConfig = agentProviderConfigService.resolve('claude')
     const sdkOptions: Options = {
       cwd: inputOptions.cwd,
       ...(inputOptions.model ? { model: inputOptions.model } : {}),
@@ -130,7 +135,7 @@ export class ClaudeRuntime implements CodeAgentProviderRuntime {
       ...(inputOptions.title ? { title: inputOptions.title } : {}),
       abortController: activeTurn.abortController,
       includePartialMessages: true,
-      pathToClaudeCodeExecutable: config.claudeCodeBinaryPath,
+      pathToClaudeCodeExecutable: requireAgentProviderExecutable(providerConfig),
       // Pinned explicitly: the SDK default flipped between versions (isolation mode
       // vs CLI parity). We require CLI parity so user-configured MCP servers and
       // skills are visible in app sessions.
@@ -143,10 +148,10 @@ export class ClaudeRuntime implements CodeAgentProviderRuntime {
         append: notebookAgentGuidance
       },
       env: {
-        ...sanitizedProcessEnv(),
+        ...providerConfig.env,
         ...agentIntegrationEnv(activeTurn.sessionId),
         CLAUDE_AGENT_SDK_CLIENT_APP: 'open-science/0.1.0',
-        ...(config.claudeConfigDir ? { CLAUDE_CONFIG_DIR: config.claudeConfigDir } : {})
+        ...(providerConfig.configHome ? { CLAUDE_CONFIG_DIR: providerConfig.configHome } : {})
       },
       ...buildSessionMcpOverride(activeTurn.sessionId, inputOptions.disabledMcpServers, inputOptions.cwd)
     }

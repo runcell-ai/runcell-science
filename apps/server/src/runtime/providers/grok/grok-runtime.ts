@@ -8,6 +8,10 @@ import type {
 
 import { config } from '../../../config/env'
 import { agentSessionService } from '../../../services'
+import {
+  agentProviderConfigService,
+  requireAgentProviderExecutable
+} from '../../../services/agent-provider-config-service'
 import { bundledScienceConnectorsService } from '../../../services/bundled-science-connectors-service'
 import type {
   CodeAgentProviderRuntime,
@@ -17,9 +21,11 @@ import type {
   RuntimeStartTurnInput
 } from '../../code-agent-provider'
 import { RuntimeProviderError } from '../../code-agent-provider'
-import { agentIntegrationEnv, sanitizedProcessEnv } from '../../env-utils'
+import { agentIntegrationEnv } from '../../env-utils'
 import { notebookAgentGuidance } from '../../notebook-guidance'
 import { GrokAcpClient, type GrokAcpMessage } from './acp-client'
+import { resolveGrokAuthMethodId } from './grok-auth'
+export { resolveGrokAuthMethodId } from './grok-auth'
 import type {
   AcpContentBlock,
   AcpInitializeResponse,
@@ -34,8 +40,6 @@ import type {
 } from './acp-types'
 import { unwrapAskUserQuestionParams } from './acp-types'
 
-export const GROK_AUTH_METHOD_API_KEY = 'xai.api_key'
-export const GROK_AUTH_METHOD_CACHED_TOKEN = 'cached_token'
 const GROK_OAUTH_REFERRER = 'open-science'
 const ACP_PROTOCOL_VERSION = 1
 
@@ -79,10 +83,6 @@ interface GrokSessionState {
   activePromptFallback: GrokPromptFallback | null
   completedPromptIds: string[]
   pendingServerRequests: Map<string, number | string>
-}
-
-export function resolveGrokAuthMethodId(env: NodeJS.ProcessEnv): string {
-  return env.XAI_API_KEY?.trim() ? GROK_AUTH_METHOD_API_KEY : GROK_AUTH_METHOD_CACHED_TOKEN
 }
 
 export function grokAssistantProviderItemId(turnId: string): string {
@@ -169,9 +169,10 @@ export class GrokRuntime implements CodeAgentProviderRuntime {
   }
 
   private async createInitializedState(session: AgentSession): Promise<GrokSessionState> {
-    const env = this.buildEnv(session.id)
+    const providerConfig = agentProviderConfigService.resolve('grok')
+    const env = this.buildEnv(session.id, providerConfig.env)
     const client = new GrokAcpClient({
-      binaryPath: config.grokBinaryPath,
+      binaryPath: requireAgentProviderExecutable(providerConfig),
       cwd: session.cwd,
       env
     })
@@ -681,9 +682,9 @@ export class GrokRuntime implements CodeAgentProviderRuntime {
     state.pendingServerRequests.set(request.id, message.id ?? 0)
   }
 
-  private buildEnv(sessionId: string): NodeJS.ProcessEnv {
+  private buildEnv(sessionId: string, providerEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     return {
-      ...sanitizedProcessEnv(),
+      ...providerEnv,
       ...agentIntegrationEnv(sessionId),
       GROK_OAUTH2_REFERRER: GROK_OAUTH_REFERRER
     }

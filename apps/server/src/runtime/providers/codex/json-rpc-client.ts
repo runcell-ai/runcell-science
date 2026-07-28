@@ -1,6 +1,13 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import readline from 'node:readline'
+
+import { readBoundedLines } from '../../bounded-line-reader'
+import { sanitizeProviderOutput } from '../../provider-output-sanitizer'
+import { spawnProviderProcess } from '../../provider-process-launch'
+import { ProviderRpcError } from '../../provider-rpc-error'
+
+const MAX_TRANSPORT_MESSAGE_BYTES = 8 * 1024 * 1024
+const MAX_TRANSPORT_STDERR_LINE_BYTES = 64 * 1024
 
 export interface CodexJsonRpcMessage {
   id?: number | string
@@ -19,6 +26,7 @@ export interface CodexJsonRpcClientOptions {
   env?: NodeJS.ProcessEnv
   /** Extra CLI args inserted before the app-server subcommand (e.g. -c overrides). */
   extraArgs?: string[]
+  platform?: NodeJS.Platform
 }
 
 interface PendingRequest {
@@ -28,29 +36,40 @@ interface PendingRequest {
 
 export class CodexJsonRpcClient extends EventEmitter {
   private readonly child: ChildProcessWithoutNullStreams
+  private readonly env: NodeJS.ProcessEnv
   private readonly pendingRequests = new Map<number, PendingRequest>()
   private readonly stderrTail: string[] = []
   private nextRequestId = 1
   private disposed = false
+  private transportFailed = false
 
   constructor(options: CodexJsonRpcClientOptions) {
     super()
-    this.child = spawn(options.binaryPath, [...(options.extraArgs ?? []), 'app-server'], {
+    this.env = options.env ?? {}
+    this.child = spawnProviderProcess(options.binaryPath, [...(options.extraArgs ?? []), 'app-server'], {
       env: options.env,
-      stdio: ['pipe', 'pipe', 'pipe']
+      windowsHide: true
     })
 
-    const stdout = readline.createInterface({ input: this.child.stdout })
-    stdout.on('line', (line) => this.handleStdoutLine(line))
-
-    const stderr = readline.createInterface({ input: this.child.stderr })
-    stderr.on('line', (line) => {
-      this.stderrTail.push(line)
-      if (this.stderrTail.length > 10) {
-        this.stderrTail.shift()
-      }
-      this.emit('stderr', line)
-    })
+    readBoundedLines(
+      this.child.stdout,
+      MAX_TRANSPORT_MESSAGE_BYTES,
+      (line) => this.handleStdoutLine(line),
+      () => this.failTransport('Codex app-server response exceeded the transport output limit.')
+    )
+    readBoundedLines(
+      this.child.stderr,
+      MAX_TRANSPORT_STDERR_LINE_BYTES,
+      (line) => {
+        const sanitized = sanitizeProviderOutput(line, this.env, 4_096)
+        this.stderrTail.push(sanitized)
+        if (this.stderrTail.length > 10) {
+          this.stderrTail.shift()
+        }
+        this.emit('stderr', sanitized)
+      },
+      () => this.failTransport('Codex app-server stderr exceeded the transport output limit.')
+    )
 
     this.child.on('error', (error) => {
       this.rejectAll(error)
@@ -149,7 +168,7 @@ export class CodexJsonRpcClient extends EventEmitter {
     try {
       message = JSON.parse(line) as CodexJsonRpcMessage
     } catch (error) {
-      this.emit('error', new Error(`Failed to parse Codex app-server JSON line: ${line}`, { cause: error }))
+      this.emit('error', new Error('Failed to parse a Codex app-server JSON response.', { cause: error }))
       return
     }
 
@@ -162,7 +181,12 @@ export class CodexJsonRpcClient extends EventEmitter {
 
       this.pendingRequests.delete(id)
       if (message.error) {
-        pending.reject(new Error(message.error.message))
+        pending.reject(
+          new ProviderRpcError(
+            sanitizeProviderOutput(message.error.message, this.env),
+            message.error.code
+          )
+        )
       } else {
         pending.resolve(message.result)
       }
@@ -184,5 +208,16 @@ export class CodexJsonRpcClient extends EventEmitter {
       pending.reject(error)
     }
     this.pendingRequests.clear()
+  }
+
+  private failTransport(message: string): void {
+    if (this.transportFailed) {
+      return
+    }
+    this.transportFailed = true
+    const error = new Error(message)
+    this.rejectAll(error)
+    this.child.kill('SIGTERM')
+    this.emit('error', error)
   }
 }

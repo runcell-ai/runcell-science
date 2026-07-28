@@ -9,6 +9,7 @@ import type {
   SetSkillEnabledRequest
 } from '@runcell-science/contracts'
 
+import { sanitizeProviderOutput } from '../../runtime/provider-output-sanitizer'
 import { McpManagementError } from '../../services/mcp-management-service'
 import { skillsService } from '../../services/skills-service'
 
@@ -21,7 +22,7 @@ function sendSkillsError(reply: FastifyReply, error: unknown): FastifyReply {
   return reply.code(502).send({
     error: {
       code: 'skills_operation_failed',
-      message: error instanceof Error ? error.message : String(error)
+      message: sanitizeProviderOutput(error)
     }
   } satisfies ApiErrorResponse)
 }

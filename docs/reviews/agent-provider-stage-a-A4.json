@@ -1,0 +1,188 @@
+{
+  "revision": "A4",
+  "scope": "Agent Provider Stage A: A3 review fixes for production-size JSON-RPC frames, guaranteed subprocess timeout settlement, runtime transport error handling, robust Grok auth classification, and safe Unicode/malformed error sanitization",
+  "workspace": "/Users/observedobserver/Documents/GitHub/open-science",
+  "baseCommit": "7dd7cae0c2603360e9d285f16987a4862e30cbba",
+  "aggregateSha256": "a9ec3d5b5fa75f30d4c913b1157840725f8e2ce9f593030554032fee31a604c7",
+  "hashAlgorithm": "SHA-256 over sorted entries encoded as path + NUL + fileSha256 + LF; files under docs/reviews are excluded",
+  "verification": [
+    {
+      "command": "yarn typecheck",
+      "result": "passed"
+    },
+    {
+      "command": "yarn --cwd apps/server test",
+      "result": "124 passed, 0 failed, 1 pre-existing environment-dependent Jupyter test skipped"
+    },
+    {
+      "command": "isolated temp-DB server smoke on 127.0.0.1:27984",
+      "result": "Grok Build, CodeX, and Claude Code detected as installed and authenticated; protected inventory, setup test, and refresh endpoints returned 200; setup test persisted zero rows"
+    }
+  ],
+  "files": [
+    {
+      "path": "apps/server/package.json",
+      "sha256": "0d1ec38dac23f85143cf7b3def685197e598113609a3580941abaa11485c5370"
+    },
+    {
+      "path": "apps/server/src/db/migrations/011_agent_provider_instance_settings.sql",
+      "sha256": "715cf1cd53d34b8f2855c62c08f2b89b0509f587a05afd0a22b61a995e6c92b5"
+    },
+    {
+      "path": "apps/server/src/http/agent-provider-control-guard.ts",
+      "sha256": "0ae4664066907f512f96d3b229b6b3133d68eb19d831f55c0d00f17f337059a8"
+    },
+    {
+      "path": "apps/server/src/http/index.ts",
+      "sha256": "d6fb623d67d4e1c74db35e01ac49e40965948f3134a51576b2a7b1d5c902658f"
+    },
+    {
+      "path": "apps/server/src/http/routes/agent-providers.ts",
+      "sha256": "a4a630c97e0126187b811a6bb74dedf3dcc488510771bb2d3bdf2d97adacf523"
+    },
+    {
+      "path": "apps/server/src/http/routes/mcp.ts",
+      "sha256": "7a4e64497f141fb73f675bc3b5c636b5fe820caecb6580fada44e6aba42df163"
+    },
+    {
+      "path": "apps/server/src/http/routes/skills.ts",
+      "sha256": "aa64daa7184b67290895d37541e9fe7adabc0db49368dbc31d8f52b97d13c84a"
+    },
+    {
+      "path": "apps/server/src/index.ts",
+      "sha256": "621573dfb0108fbd7dd6e862b2957534b6eb351dfa94a7f59548ac8d06d26b23"
+    },
+    {
+      "path": "apps/server/src/runtime/bounded-line-reader.ts",
+      "sha256": "0730fb918f6611f26417b557beb64c1cbcf02906333eb4e21f249cf7a3789ae4"
+    },
+    {
+      "path": "apps/server/src/runtime/env-utils.ts",
+      "sha256": "45d653ef43f0c81f58189859705d818762cd89b8f1bb4281d11f0c29ae1cf252"
+    },
+    {
+      "path": "apps/server/src/runtime/generation-bound-probe-cache.ts",
+      "sha256": "330ed789aedf1eedf2fca591b306f0737c5a04209d1f93fd6d2c72183b4b5590"
+    },
+    {
+      "path": "apps/server/src/runtime/provider-output-sanitizer.ts",
+      "sha256": "4343dc79c8d08c8fcdea63e16dd3bb9ba65566eb933a0fc3829a04cd1a95ff0f"
+    },
+    {
+      "path": "apps/server/src/runtime/provider-process-launch.ts",
+      "sha256": "4c0715677933a066786046520209808c961644bf3030f203983f40a11dc215f6"
+    },
+    {
+      "path": "apps/server/src/runtime/provider-rpc-error.ts",
+      "sha256": "66278ca3bdfe7a1cb285ad92adf684a6b2eadb98477609663d0c3ec91b5b1038"
+    },
+    {
+      "path": "apps/server/src/runtime/providers/claude/claude-models.ts",
+      "sha256": "d4098e28e74c81a886b1f133f7263ee5fe75ce74623db49caf56346a85ca5afd"
+    },
+    {
+      "path": "apps/server/src/runtime/providers/claude/claude-runtime.ts",
+      "sha256": "29b301fb8b6ac66cad67da261e406457a9a49f69e241dfe8cba05a907fb9fd1d"
+    },
+    {
+      "path": "apps/server/src/runtime/providers/codex/capability-probe.ts",
+      "sha256": "60c9934a7aeca7a0751e0fc9ce6b9e84fc215105dc2c524132f29180d0713e94"
+    },
+    {
+      "path": "apps/server/src/runtime/providers/codex/codex-runtime.ts",
+      "sha256": "d0d0e6ab1ab6d867d35c731322bd6a62a7838a28298f814fc1557170adcf80fe"
+    },
+    {
+      "path": "apps/server/src/runtime/providers/codex/json-rpc-client.ts",
+      "sha256": "3f886b0ee03fe5154ba402a57613ab2fa8813f94c5492f70f148a14444893952"
+    },
+    {
+      "path": "apps/server/src/runtime/providers/grok/acp-client.ts",
+      "sha256": "f8bc37945a73f030546914a3a6f64f8d586062b5d9417dd4637de9668a02e38b"
+    },
+    {
+      "path": "apps/server/src/runtime/providers/grok/grok-auth.ts",
+      "sha256": "26cbfa82b8738a98f0e89f6aac605260a584d97d4b3c3818682fbf7a0a6fe7ce"
+    },
+    {
+      "path": "apps/server/src/runtime/providers/grok/grok-models.ts",
+      "sha256": "2296d0b96ed3eca6355bfb821e739dfb1931e823925cdfc759a2019343ed8300"
+    },
+    {
+      "path": "apps/server/src/runtime/providers/grok/grok-runtime.ts",
+      "sha256": "9d1be2089e450d14b0975dd4ae0968ff9fac8691077ce768b768405562d19e5d"
+    },
+    {
+      "path": "apps/server/src/services/agent-model-service.ts",
+      "sha256": "5ce0e6ffdafe72910d7312cceee06ce01c9e319cd13402c215f4753cd26a90ff"
+    },
+    {
+      "path": "apps/server/src/services/agent-provider-config-service.ts",
+      "sha256": "6133fc470f472c5c463dc66bad900140004ababe169f7d9691ebe1f5f1043ff2"
+    },
+    {
+      "path": "apps/server/src/services/agent-provider-drivers.ts",
+      "sha256": "12a8e5b03f50c4d6d08d7ed22e2f795e3b0ce65287660366a1113f338a2cb630"
+    },
+    {
+      "path": "apps/server/src/services/agent-provider-registry.ts",
+      "sha256": "cf6d5e5075cd0e335f830bc96338275711cacd7bb41c8052e3d714798cd28a48"
+    },
+    {
+      "path": "apps/server/src/services/codex-management-client-service.ts",
+      "sha256": "4fbc2f64e4a60dc140bfbd8284fc3ba5237d8c00978bc804922917b6f1167ce4"
+    },
+    {
+      "path": "apps/server/src/services/mcp-management-service.ts",
+      "sha256": "3fff47f1021bcea73fc732e379c0bb1828137124c8679af8fc3e5ed0ddb2ca9b"
+    },
+    {
+      "path": "apps/server/src/services/skills-service.ts",
+      "sha256": "5528b86dfb4029c1c85b30f83751107bbce7d1b5d3e65a42dab4a6529c5bedf7"
+    },
+    {
+      "path": "apps/server/test/agent-provider-config-service.test.ts",
+      "sha256": "6c8280556f5d01ec1d310da44f5aa8cc386096c87778d6de600eb992e9e27aa2"
+    },
+    {
+      "path": "apps/server/test/agent-provider-drivers.test.ts",
+      "sha256": "b908cfbe096efcd5fe74429cf81f794ea2c06500b0614a9ade42b9a00768157b"
+    },
+    {
+      "path": "apps/server/test/agent-provider-registry.test.ts",
+      "sha256": "ee7b0bb884d03b6d476378f1f6b78d0c17418ec68149cfa25330f2cf6c723353"
+    },
+    {
+      "path": "apps/server/test/agent-provider-route.test.ts",
+      "sha256": "9e144a1161dd1b2af69b923d08ed4b9fdd5820a75fa24427b924d4b132c8c9de"
+    },
+    {
+      "path": "apps/server/test/codex-json-rpc-client.test.ts",
+      "sha256": "72f81b7692d2412f6a620d47ece2b5c5675d1ece8c1918a404600179653bf2ca"
+    },
+    {
+      "path": "apps/server/test/codex-management-client-service.test.ts",
+      "sha256": "a0a03a26d582725e1ed57850f0105baf439cb50f1267fb6dacd1cd3b39665c25"
+    },
+    {
+      "path": "apps/server/test/generation-bound-probe-cache.test.ts",
+      "sha256": "29358bea16b638f6c9e377868c945007d3910bb0723610a92b6fc5c6a22221f5"
+    },
+    {
+      "path": "apps/server/test/grok-acp-client.test.ts",
+      "sha256": "7d1d4d2d9d02c034d0ddd01073e27e0ce35e0eb5d227758b3c0edfc746a80ac6"
+    },
+    {
+      "path": "docs/agent-provider-architecture-research.md",
+      "sha256": "759e855609b72a6cc5811d8416323b009612c771b2600bc9f6520c66d0bf24c2"
+    },
+    {
+      "path": "packages/contracts/src/index.ts",
+      "sha256": "a65cbea0511e0c8e3d9044c647ff2f390a9ed63c68956585fba13c4464068284"
+    },
+    {
+      "path": "yarn.lock",
+      "sha256": "c7e0ceeab0621b4acfa20e8921a5facfdc1025e0672648a2181e480609d6e8ab"
+    }
+  ]
+}

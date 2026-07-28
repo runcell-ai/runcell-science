@@ -9,6 +9,10 @@ import type {
 
 import { config } from '../../../config/env'
 import { agentSessionService } from '../../../services'
+import {
+  agentProviderConfigService,
+  requireAgentProviderExecutable
+} from '../../../services/agent-provider-config-service'
 import { bundledScienceConnectorsService } from '../../../services/bundled-science-connectors-service'
 import type {
   CodeAgentProviderRuntime,
@@ -18,7 +22,7 @@ import type {
   RuntimeStartTurnInput
 } from '../../code-agent-provider'
 import { RuntimeProviderError } from '../../code-agent-provider'
-import { agentIntegrationEnv, sanitizedProcessEnv } from '../../env-utils'
+import { agentIntegrationEnv } from '../../env-utils'
 import { notebookAgentGuidance } from '../../notebook-guidance'
 import type { ServerNotification } from './generated/ServerNotification'
 import type { ServerRequest } from './generated/ServerRequest'
@@ -225,9 +229,10 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
   }
 
   private async createInitializedState(session: AgentSession): Promise<CodexSessionState> {
+    const providerConfig = agentProviderConfigService.resolve('codex')
     const client = new CodexJsonRpcClient({
-      binaryPath: config.codexBinaryPath,
-      env: this.buildEnv(session.id),
+      binaryPath: requireAgentProviderExecutable(providerConfig),
+      env: this.buildEnv(session.id, providerConfig.env),
       extraArgs: [
         ...buildBundledMcpOverrides(session),
         ...buildMcpDisableOverrides(session.disabledMcpServers)
@@ -262,6 +267,23 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
         summary: line,
         status: 'info'
       })
+    })
+    client.on('error', (error: Error) => {
+      try {
+        agentSessionService.recordRuntimeActivity({
+          sessionId: session.id,
+          turnId: state.activeLocalTurnId,
+          provider: 'codex',
+          eventType: 'runtime.error',
+          rawSource: 'codex.app-server.client',
+          rawJson: { message: error.message },
+          title: 'Codex runtime error',
+          summary: error.message,
+          status: 'error'
+        })
+      } catch {
+        // A late transport error can race session deletion.
+      }
     })
     client.on('exit', () => {
       // Guard by identity: after a resetSession the old app-server exits
@@ -676,11 +698,10 @@ export class CodexRuntime implements CodeAgentProviderRuntime {
     return null
   }
 
-  private buildEnv(sessionId: string): NodeJS.ProcessEnv {
+  private buildEnv(sessionId: string, providerEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     return {
-      ...sanitizedProcessEnv(),
-      ...agentIntegrationEnv(sessionId),
-      ...(config.codexHome ? { CODEX_HOME: config.codexHome } : {})
+      ...providerEnv,
+      ...agentIntegrationEnv(sessionId)
     }
   }
 }

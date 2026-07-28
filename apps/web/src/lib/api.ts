@@ -1,5 +1,9 @@
 import type {
   AgentArtifactStateResponse,
+  AgentProviderControlTokenResponse,
+  AgentProviderLoginAttemptResponse,
+  AgentProviderSetupInput,
+  AgentProviderSnapshotResponse,
   AgentSessionDetail,
   AgentSessionWorktreeDiffResponse,
   AgentSessionWorktreeDiffStatusResponse,
@@ -15,6 +19,7 @@ import type {
   ImportSkillRequest,
   ImportSkillResponse,
   ListBundledScienceConnectorsResponse,
+  ListAgentProviderInstancesResponse,
   ListAgentModelsResponse,
   ListAgentSessionsResponse,
   ListMcpServersResponse,
@@ -31,6 +36,22 @@ function apiUrl(path: string): string {
   return `${apiBaseUrl}${path}`
 }
 
+export class ApiRequestError extends Error {
+  readonly status: number
+  readonly code: string | null
+
+  constructor(
+    message: string,
+    status: number,
+    code: string | null
+  ) {
+    super(message)
+    this.name = 'ApiRequestError'
+    this.status = status
+    this.code = code
+  }
+}
+
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(apiUrl(path), {
     ...init,
@@ -41,11 +62,15 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   })
   const body = await response.json().catch(() => null)
   if (!response.ok) {
+    const errorCode =
+      body && typeof body === 'object' && 'error' in body && body.error && typeof body.error === 'object'
+        ? String((body.error as { code?: unknown }).code ?? '')
+        : ''
     const message =
       body && typeof body === 'object' && 'error' in body && body.error && typeof body.error === 'object'
         ? String((body.error as { message?: unknown }).message ?? response.statusText)
         : response.statusText
-    throw new Error(message)
+    throw new ApiRequestError(message, response.status, errorCode || null)
   }
   return body as T
 }
@@ -55,6 +80,88 @@ export function toErrorMessage(error: unknown): string {
 }
 
 export const api = {
+  getAgentProviderControlToken: () =>
+    requestJson<AgentProviderControlTokenResponse>('/api/agent-provider-control/token'),
+
+  listAgentProviderInstances: (token: string) =>
+    requestJson<ListAgentProviderInstancesResponse>('/api/agent-provider-instances', {
+      headers: { 'x-runcell-control-token': token }
+    }),
+
+  refreshAgentProvider: (token: string, instanceId: string) =>
+    requestJson<AgentProviderSnapshotResponse>(
+      `/api/agent-provider-instances/${encodeURIComponent(instanceId)}/refresh`,
+      {
+        method: 'POST',
+        headers: { 'x-runcell-control-token': token },
+        body: JSON.stringify({})
+      }
+    ),
+
+  testAgentProviderSetup: (token: string, instanceId: string, input: AgentProviderSetupInput) =>
+    requestJson<AgentProviderSnapshotResponse>(
+      `/api/agent-provider-instances/${encodeURIComponent(instanceId)}/setup/test`,
+      {
+        method: 'POST',
+        headers: { 'x-runcell-control-token': token },
+        body: JSON.stringify(input)
+      }
+    ),
+
+  saveAgentProviderSetup: (token: string, instanceId: string, input: AgentProviderSetupInput) =>
+    requestJson<AgentProviderSnapshotResponse>(
+      `/api/agent-provider-instances/${encodeURIComponent(instanceId)}/setup`,
+      {
+        method: 'PUT',
+        headers: { 'x-runcell-control-token': token },
+        body: JSON.stringify(input)
+      }
+    ),
+
+  resetAgentProviderSetup: (token: string, instanceId: string) =>
+    requestJson<AgentProviderSnapshotResponse>(
+      `/api/agent-provider-instances/${encodeURIComponent(instanceId)}/setup`,
+      {
+        method: 'DELETE',
+        headers: { 'x-runcell-control-token': token },
+        body: JSON.stringify({})
+      }
+    ),
+
+  createAgentProviderLoginAttempt: (token: string, instanceId: string) =>
+    requestJson<AgentProviderLoginAttemptResponse>(
+      `/api/agent-provider-instances/${encodeURIComponent(instanceId)}/login-attempts`,
+      {
+        method: 'POST',
+        headers: { 'x-runcell-control-token': token },
+        body: JSON.stringify({})
+      }
+    ),
+
+  getAgentProviderLoginAttempt: (
+    token: string,
+    instanceId: string,
+    attemptId: string,
+    signal?: AbortSignal
+  ) =>
+    requestJson<AgentProviderLoginAttemptResponse>(
+      `/api/agent-provider-instances/${encodeURIComponent(instanceId)}/login-attempts/${encodeURIComponent(attemptId)}`,
+      {
+        headers: { 'x-runcell-control-token': token },
+        signal
+      }
+    ),
+
+  cancelAgentProviderLoginAttempt: (token: string, instanceId: string, attemptId: string) =>
+    requestJson<AgentProviderLoginAttemptResponse>(
+      `/api/agent-provider-instances/${encodeURIComponent(instanceId)}/login-attempts/${encodeURIComponent(attemptId)}/cancel`,
+      {
+        method: 'POST',
+        headers: { 'x-runcell-control-token': token },
+        body: JSON.stringify({})
+      }
+    ),
+
   listSessions: () => requestJson<ListAgentSessionsResponse>('/api/sessions'),
 
   listModels: () => requestJson<ListAgentModelsResponse>('/api/models'),

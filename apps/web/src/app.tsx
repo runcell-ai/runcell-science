@@ -17,6 +17,8 @@ import {
   providerLabel
 } from '@runcell-science/ui'
 import type { AgentModelChoice } from '@runcell-science/ui'
+import { Settings2 } from 'lucide-react'
+import { AgentSettingsPage } from './agent-settings-page'
 import { ArtifactsPanel } from './artifacts-panel'
 import { ConnectorsPanel } from './connectors-panel'
 import { SessionConnectorsMenu } from './session-connectors-menu'
@@ -42,6 +44,12 @@ import './app.css'
 
 const storedModelChoice = readStoredModelChoice()
 
+type AppView = 'workspace' | 'agent-settings'
+
+function readAppView(): AppView {
+  return window.location.hash === '#agent-settings' ? 'agent-settings' : 'workspace'
+}
+
 function App() {
   const isNarrow = useIsNarrow()
   const [provider, setProvider] = useState<AgentProvider>(storedModelChoice?.provider ?? 'codex')
@@ -51,6 +59,7 @@ function App() {
   const [recentCwds, setRecentCwds] = useState(readRecentCwds)
   const [connectorsOpen, setConnectorsOpen] = useState(false)
   const [skillsOpen, setSkillsOpen] = useState(false)
+  const [view, setView] = useState<AppView>(readAppView)
 
   const workspace = useWorkspace()
   const sessionList = useSessionList(workspace.reportError)
@@ -78,6 +87,24 @@ function App() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    const handleHashChange = () => setView(readAppView())
+    window.addEventListener('hashchange', handleHashChange)
+    return () => window.removeEventListener('hashchange', handleHashChange)
+  }, [])
+
+  const showWorkspace = () => {
+    if (window.location.hash === '#agent-settings') {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
+    }
+    setView('workspace')
+  }
+
+  const showAgentSettings = () => {
+    window.location.hash = 'agent-settings'
+    setView('agent-settings')
+  }
 
   const updateCwd = (value: string) => {
     setCwd(value)
@@ -131,13 +158,26 @@ function App() {
     <TooltipProvider>
       <div className="app-shell">
         <ResizablePanelGroup direction={isNarrow ? 'vertical' : 'horizontal'} className="shell-grid">
-          <ResizablePanel defaultSize={22} minSize={16} maxSize={32} className="panel sessions-panel">
+          <ResizablePanel
+            id="sessions"
+            order={1}
+            defaultSize={22}
+            minSize={16}
+            maxSize={32}
+            className="panel sessions-panel"
+          >
             <AgentSessionSidebar
               sessions={sessionList.sessions}
               activeSessionId={workspace.activeSessionId}
               onRefresh={() => void sessionList.refresh()}
-              onStartDraft={workspace.startDraft}
-              onOpenSession={(sessionId) => void workspace.openSession(sessionId)}
+              onStartDraft={() => {
+                showWorkspace()
+                workspace.startDraft()
+              }}
+              onOpenSession={(sessionId) => {
+                showWorkspace()
+                void workspace.openSession(sessionId)
+              }}
             />
             <div className="sidebar-footer">
               <Button
@@ -156,12 +196,36 @@ function App() {
               >
                 Skills
               </Button>
+              <Button
+                variant={view === 'agent-settings' ? 'secondary' : 'outline'}
+                size="sm"
+                className="sidebar-footer-button sidebar-footer-settings"
+                aria-current={view === 'agent-settings' ? 'page' : undefined}
+                onClick={showAgentSettings}
+              >
+                <Settings2 />
+                Agent settings
+              </Button>
             </div>
           </ResizablePanel>
 
           <ResizableHandle withHandle />
 
+          {view === 'agent-settings' ? (
+            <ResizablePanel
+              id="agent-settings"
+              order={2}
+              defaultSize={78}
+              minSize={40}
+              className="panel agent-settings-panel"
+            >
+              <AgentSettingsPage onClose={showWorkspace} />
+            </ResizablePanel>
+          ) : (
+            <>
           <ResizablePanel
+            id="workspace"
+            order={2}
             defaultSize={workspace.sidePanel && workspace.activeSessionId ? 44 : 78}
             minSize={40}
             className="panel chat-panel"
@@ -246,7 +310,14 @@ function App() {
           {workspace.activeSessionId && workspace.sidePanel ? (
             <>
               <ResizableHandle withHandle />
-              <ResizablePanel defaultSize={38} minSize={24} maxSize={56} className="panel side-panel-slot">
+              <ResizablePanel
+                id="side-panel"
+                order={3}
+                defaultSize={38}
+                minSize={24}
+                maxSize={56}
+                className="panel side-panel-slot"
+              >
                 {workspace.sidePanel === 'artifacts' ? (
                   <ArtifactsPanel
                     apiBaseUrl={apiBaseUrl}
@@ -274,6 +345,8 @@ function App() {
               </ResizablePanel>
             </>
           ) : null}
+            </>
+          )}
         </ResizablePanelGroup>
 
         <ConnectorsPanel open={connectorsOpen} cwd={activeCwd} onOpenChange={setConnectorsOpen} />

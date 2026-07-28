@@ -1,4 +1,7 @@
-import { config } from '../../../config/env'
+import {
+  agentProviderConfigService,
+  requireAgentProviderExecutable
+} from '../../../services/agent-provider-config-service'
 import { CodexJsonRpcClient } from './json-rpc-client'
 
 export type CodexCapabilityKey = 'configRead' | 'mcpServerStatusList' | 'skillsList'
@@ -69,8 +72,10 @@ function unsupported(error: unknown): CodexCapabilityResult {
  * instead of enforcing a minimum codex version.
  */
 export async function probeCodexCapabilities(cwd: string = process.cwd()): Promise<CodexCapabilityReport> {
+  const providerConfig = agentProviderConfigService.resolve('codex')
+  const binaryPath = requireAgentProviderExecutable(providerConfig)
   const report: CodexCapabilityReport = {
-    binaryPath: config.codexBinaryPath,
+    binaryPath,
     initialized: false,
     capabilities: {
       configRead: { supported: false },
@@ -80,10 +85,9 @@ export async function probeCodexCapabilities(cwd: string = process.cwd()): Promi
   }
 
   const client = new CodexJsonRpcClient({
-    binaryPath: config.codexBinaryPath,
+    binaryPath,
     env: {
-      ...process.env,
-      ...(config.codexHome ? { CODEX_HOME: config.codexHome } : {})
+      ...providerConfig.env
     }
   })
   // The probe owns this client; swallow async errors so they surface only as

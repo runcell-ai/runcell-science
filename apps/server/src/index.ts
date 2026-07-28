@@ -4,16 +4,29 @@ import { closeDb } from './db/connection'
 import { runMigrations } from './db/migrate'
 import { runtimeRegistry } from './runtime'
 import { jupyterServerManager } from './services'
+import { getAgentProviderRegistry } from './services/agent-provider-registry'
+import { agentProviderLoginService } from './services/agent-provider-login-service'
+import { codexManagementClientService } from './services/codex-management-client-service'
+import { mcpManagementService } from './services/mcp-management-service'
 
 async function bootstrap(): Promise<void> {
   ensureRuntimeDirs()
 
   await runMigrations()
+  const agentProviderRegistry = getAgentProviderRegistry()
+  agentProviderRegistry.start()
   const server = createServer()
 
   const closeHooks = async () => {
-    await jupyterServerManager.disposeAll()
-    await runtimeRegistry.dispose()
+    await agentProviderLoginService.dispose()
+    const providerRegistryDispose = agentProviderRegistry.dispose()
+    mcpManagementService.dispose()
+    codexManagementClientService.dispose()
+    await Promise.all([
+      jupyterServerManager.disposeAll(),
+      runtimeRegistry.dispose(),
+      providerRegistryDispose
+    ])
     await server.close()
     closeDb()
   }

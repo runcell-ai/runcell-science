@@ -2489,8 +2489,10 @@ __metadata:
     "@runcell-science/contracts": "workspace:*"
     "@runcell-science/science-connectors": "workspace:*"
     "@types/better-sqlite3": "npm:^7.6.11"
+    "@types/cross-spawn": "npm:^6.0.6"
     "@types/node": "npm:^24.13.2"
     better-sqlite3: "npm:^12.4.2"
+    cross-spawn: "npm:^7.0.6"
     dotenv: "npm:^17.0.1"
     fastify: "npm:^4.29.1"
     tsx: "npm:^4.20.3"
@@ -2894,6 +2896,15 @@ __metadata:
     "@types/node": "npm:*"
     "@types/responselike": "npm:^1.0.0"
   checksum: 10c0/10816a88e4e5b144d43c1d15a81003f86d649776c7f410c9b5e6579d0ad9d4ca71c541962fb403077388b446e41af7ae38d313e46692144985f006ac5e11fa03
+  languageName: node
+  linkType: hard
+
+"@types/cross-spawn@npm:^6.0.6":
+  version: 6.0.6
+  resolution: "@types/cross-spawn@npm:6.0.6"
+  dependencies:
+    "@types/node": "npm:*"
+  checksum: 10c0/e3d476bb6b3a54a8934a97fe6ee4bd13e2e5eb29073929a4be76a52466602ffaea420b20774ffe8503f9fa24f3ae34817e95e7f625689fb0d1c10404f5b2889c
   languageName: node
   linkType: hard
 

@@ -9,9 +9,10 @@ import type {
   SkillView
 } from '@runcell-science/contracts'
 
-import { config } from '../config/env'
 import { getDb } from '../db/connection'
 import type { SkillsListResponse } from '../runtime/providers/codex/generated/v2/SkillsListResponse'
+import { sanitizeProviderOutput } from '../runtime/provider-output-sanitizer'
+import { agentProviderConfigService } from './agent-provider-config-service'
 import { McpManagementError, mcpManagementService } from './mcp-management-service'
 
 const SKILL_NAME_PATTERN = /^[A-Za-z0-9_-]+$/
@@ -72,12 +73,14 @@ export class SkillsService {
           })
         }
         for (const error of entry.errors) {
-          const detail = (error as { message?: string }).message ?? JSON.stringify(error)
+          const detail = sanitizeProviderOutput(
+            (error as { message?: string }).message ?? error
+          )
           warnings.push(`skill load error: ${detail}`)
         }
       }
     } catch (error) {
-      warnings.push(`Codex skills unavailable: ${error instanceof Error ? error.message : String(error)}`)
+      warnings.push(`CodeX skills unavailable: ${sanitizeProviderOutput(error)}`)
     }
     return { skills, warnings }
   }
@@ -148,11 +151,14 @@ export class SkillsService {
 
     const result: ImportSkillResponse = { written: [], skipped: [] }
     for (const provider of input.providers) {
+      const resolved = provider === 'claude' ? agentProviderConfigService.resolve('claude') : null
       const root =
         provider === 'claude'
-          ? config.claudeConfigDir
-            ? path.join(config.claudeConfigDir, 'skills')
+          ? resolved?.configHome
+            ? path.join(resolved.configHome, 'skills')
             : path.join(os.homedir(), '.claude', 'skills')
+          // Codex intentionally imports shared skills from ~/.agents/skills;
+          // this is independent of CODEX_HOME in the Codex CLI convention.
           : path.join(os.homedir(), '.agents', 'skills')
 
       const skillDir = path.join(root, input.name)

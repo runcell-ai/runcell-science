@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
-import { chmodSync } from 'node:fs'
+import fs, { chmodSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
+import { ProviderRpcError } from '../src/runtime/provider-rpc-error'
 import { GrokAcpClient, type GrokAcpMessage } from '../src/runtime/providers/grok/acp-client'
 
 const fakeAgentPath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'fake-grok-agent.mjs')
@@ -15,6 +17,21 @@ function makeClient(scenario: string): GrokAcpClient {
     env: { ...process.env, FAKE_GROK_SCENARIO: scenario }
   })
   // Transport errors surface through request() rejections in these tests.
+  client.on('error', () => {})
+  return client
+}
+
+function makeOversizedClient(stream: 'stdout' | 'stderr' = 'stdout'): GrokAcpClient {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'open-science-oversized-grok-'))
+  const binaryPath = path.join(dir, 'grok')
+  fs.writeFileSync(
+    binaryPath,
+    `#!/usr/bin/env node
+process.stdin.once('data', () => process.${stream}.write('x'.repeat(${stream === 'stdout' ? '9 * 1024 * 1024' : '70 * 1024'})))
+`,
+    { mode: 0o755 }
+  )
+  const client = new GrokAcpClient({ binaryPath, env: process.env })
   client.on('error', () => {})
   return client
 }
@@ -80,7 +97,10 @@ test('Grok ACP client rejects JSON-RPC error responses', async () => {
     await client.request('initialize', { protocolVersion: 1 }, 5000)
     await assert.rejects(
       client.request('authenticate', { methodId: 'cached_token' }, 5000),
-      /not logged in/
+      (error: unknown) =>
+        error instanceof ProviderRpcError &&
+        error.code === -32000 &&
+        /not logged in/.test(error.message)
     )
   } finally {
     client.dispose()
@@ -108,6 +128,33 @@ test('Grok ACP client times out requests the agent never answers', async () => {
       client.request('session/prompt', { sessionId, prompt: [{ type: 'text', text: 'zzz' }] }, 200),
       /timed out after 200ms/
     )
+  } finally {
+    client.dispose()
+  }
+})
+
+test('Grok ACP transport terminates an oversized response line', async () => {
+  const client = makeOversizedClient()
+  try {
+    await assert.rejects(
+      client.request('initialize', {}, 5_000),
+      /transport output limit/i
+    )
+  } finally {
+    client.dispose()
+  }
+})
+
+test('Grok ACP transport bounds stderr without emitting the raw payload', async () => {
+  const client = makeOversizedClient('stderr')
+  const stderrLines: string[] = []
+  client.on('stderr', (line) => stderrLines.push(String(line)))
+  try {
+    await assert.rejects(
+      client.request('initialize', {}, 5_000),
+      /stderr exceeded the transport output limit/i
+    )
+    assert.deepEqual(stderrLines, [])
   } finally {
     client.dispose()
   }
