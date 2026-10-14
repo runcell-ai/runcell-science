@@ -30,6 +30,7 @@ import type {
 } from '../../code-agent-provider'
 import { RuntimeProviderError } from '../../code-agent-provider'
 import { notebookAgentGuidance } from '../../notebook-guidance'
+import { sanitizeProviderOutput } from '../../provider-output-sanitizer'
 import {
   assertOpenCodeCompatibility,
   connectOpenCodeServer,
@@ -126,17 +127,12 @@ export function buildOpenCodeQuestionResolution(
 }
 
 function errorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim()) return error.message
   if (error && typeof error === 'object') {
     const record = error as Record<string, unknown>
     const nested = record.error ?? record.data ?? record.body
-    try {
-      return JSON.stringify(nested ?? error)
-    } catch {
-      return String(error)
-    }
+    return sanitizeProviderOutput(nested ?? error)
   }
-  return String(error)
+  return sanitizeProviderOutput(error)
 }
 
 function providerError(operation: string, error: unknown): RuntimeProviderError {
@@ -554,11 +550,17 @@ export class OpenCodeRuntime implements CodeAgentProviderRuntime {
         return
       case 'message.part.delta': {
         const part = state.parts.get(event.properties.partID)
-        if (!part || part.type !== 'text' || state.messageRoles.get(part.messageID) !== 'assistant' || !turnId) return
+        if (
+          event.properties.field !== 'text' ||
+          !part ||
+          part.type !== 'text' ||
+          state.messageRoles.get(part.messageID) !== 'assistant' ||
+          !turnId
+        ) return
         const previous = state.emittedText.get(part.id) ?? ''
-        const merged = mergeOpenCodeText(previous, event.properties.delta)
-        state.emittedText.set(part.id, merged.text)
-        if (merged.delta) this.appendAssistantDelta(state, turnId, part.id, merged.delta, event)
+        const delta = event.properties.delta
+        state.emittedText.set(part.id, previous + delta)
+        if (delta) this.appendAssistantDelta(state, turnId, part.id, delta, event)
         return
       }
       case 'permission.asked':

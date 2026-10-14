@@ -1,11 +1,13 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import type { ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import net from 'node:net'
 
 import { createOpencodeClient, type OpencodeClient } from '@opencode-ai/sdk/v2'
 
 import { config } from '../../../config/env'
-import { agentIntegrationEnv, sanitizedProcessEnv } from '../../env-utils'
+import { agentIntegrationEnv } from '../../env-utils'
+import { spawnProviderProcess } from '../../provider-process-launch'
+import { sanitizeProviderOutput } from '../../provider-output-sanitizer'
 
 const SERVER_READY_PREFIX = 'opencode server listening'
 const SERVER_START_TIMEOUT_MS = 30_000
@@ -131,15 +133,14 @@ async function startManagedServer(input: {
   const port = await findAvailablePort()
   const username = 'opencode'
   const password = randomBytes(24).toString('base64url')
-  const child = spawn(
+  const child = spawnProviderProcess(
     config.opencodeBinaryPath,
     ['serve', '--hostname=127.0.0.1', `--port=${port}`],
     {
       cwd: input.directory,
       detached: process.platform !== 'win32',
-      stdio: ['ignore', 'pipe', 'pipe'],
       env: {
-        ...sanitizedProcessEnv(),
+        ...process.env,
         ...agentIntegrationEnv(input.sessionId),
         OPENCODE_CONFIG_CONTENT: '{}',
         OPENCODE_SERVER_USERNAME: username,
@@ -147,6 +148,7 @@ async function startManagedServer(input: {
       }
     }
   )
+  child.stdin.end()
 
   let output = ''
   let readyUrl: string
@@ -198,7 +200,7 @@ async function startManagedServer(input: {
     })
   } catch (error) {
     await terminateChild(child)
-    const detail = error instanceof Error ? error.message : String(error)
+    const detail = sanitizeProviderOutput(error, { ...process.env, OPENCODE_SERVER_PASSWORD: password })
     throw new Error(
       `Failed to start OpenCode CLI '${config.opencodeBinaryPath}': ${detail}. ` +
         'Install OpenCode and run `opencode auth login` for the provider you want to use.',
@@ -210,7 +212,8 @@ async function startManagedServer(input: {
   let disposing = false
   child.on('exit', (code, signal) => {
     if (disposing) return
-    const suffix = output.trim() ? ` Recent output: ${output.trim()}` : ''
+    const recentOutput = sanitizeProviderOutput(output, { ...process.env, OPENCODE_SERVER_PASSWORD: password })
+    const suffix = recentOutput ? ` Recent output: ${recentOutput}` : ''
     const error = new Error(
       `OpenCode server exited unexpectedly (code=${code ?? 'null'}, signal=${signal ?? 'null'}).${suffix}`
     )

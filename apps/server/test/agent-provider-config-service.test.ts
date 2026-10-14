@@ -126,18 +126,19 @@ test('invalid persisted overrides degrade resolution and can still be reset', ()
   const db = database()
   const missingBinary = path.join(root, 'removed-codex')
   const missingHome = path.join(root, 'removed-home')
-  db.prepare(
-    `INSERT INTO agent_provider_instance_settings (
-       instance_id, driver, binary_path_override, config_home_override
-     ) VALUES (?, ?, ?, ?)`
-  ).run('codex', 'codex', missingBinary, missingHome)
-
   const service = new AgentProviderConfigService({
     db: () => db,
     environment: () => ({ PATH: '' }),
     homeDir: () => root,
     workspaceRoot: root
   })
+  const original = service.resolve('codex')
+  db.prepare(
+    `INSERT INTO agent_provider_instance_settings (
+       instance_id, driver, binary_path_override, config_home_override
+     ) VALUES (?, ?, ?, ?)`
+  ).run('codex', 'codex', missingBinary, missingHome)
+
   try {
     const degraded = service.resolve('codex')
     assert.equal(degraded.commandSource, 'persisted')
@@ -146,9 +147,7 @@ test('invalid persisted overrides degrade resolution and can still be reset', ()
     assert.equal(degraded.configHome, missingHome)
 
     const reset = service.reset('codex')
-    assert.equal(reset.commandSource, 'default')
-    assert.equal(reset.configuredCommand, 'codex')
-    assert.equal(reset.configHome, null)
+    assert.deepEqual(reset, original)
   } finally {
     db.close()
     rmSync(root, { recursive: true, force: true })
